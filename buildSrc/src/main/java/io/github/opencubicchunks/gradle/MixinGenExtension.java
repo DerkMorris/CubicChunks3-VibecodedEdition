@@ -175,6 +175,9 @@ public class MixinGenExtension {
         convention.getSourceSets().forEach(sourceSet -> {
             Map<String, Action<MixinConfig>> configs = configsBySourceSet.get(sourceSet);
             if (configs == null) {
+                if (sourceSet.getAllJava().isEmpty()) {
+                    return;
+                }
                 throw new RuntimeException("No mixin config was registered for source set " + sourceSet);
             }
 

@@ -41,7 +41,7 @@ public class MixinCreateWorldScreen {
         }
     }
 
-    @Inject(method = "<init>", at = @At(value = "INVOKE_ASSIGN", target = "Lnet/minecraft/client/gui/screens/worldselection/SwitchGrid$Builder;addSwitch(Lnet/minecraft/network/chat/Component;Ljava/util/function/BooleanSupplier;Ljava/util/function/Consumer;)Lnet/minecraft/client/gui/screens/worldselection/SwitchGrid$SwitchBuilder;", ordinal = 1))
+    @Inject(method = "<init>", at = @At(value = "INVOKE_ASSIGN", unsafe = true, target = "Lnet/minecraft/client/gui/screens/worldselection/SwitchGrid$Builder;addSwitch(Lnet/minecraft/network/chat/Component;Ljava/util/function/BooleanSupplier;Ljava/util/function/Consumer;)Lnet/minecraft/client/gui/screens/worldselection/SwitchGrid$SwitchBuilder;", ordinal = 1))
     private void cc_addCubicWorldGenButtonToCreateWorldScreen(CreateWorldScreen screen, CallbackInfo ci, @Local SwitchGrid.Builder builder) {
         cc_cubicChunks = CubicChunks.config().shouldGenerateNewWorldsAsCC();
         builder.addSwitch(CUBIC_CHUNKS, this::cc_isCubicChunks, this::cc_setCubicChunks)

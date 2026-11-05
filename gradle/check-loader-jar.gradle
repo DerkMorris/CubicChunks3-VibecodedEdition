@@ -1,0 +1,72 @@
+// Validate the installable artifact, including nested dependencies, rather than only loose classes.
+def loaderName = project.name
+def modId = parent.name
+def artifactTask = loaderName == 'forge' && modId == 'cubicchunks' ? tasks.named('jarJar').get() : tasks.named('jar').get()
+tasks.register('checkLoaderJar') {
+    dependsOn artifactTask
+    inputs.file artifactTask.archiveFile
+    doLast {
+        new java.util.jar.JarFile(artifactTask.archiveFile.get().asFile).withCloseable { jarFile ->
+            def requireEntry = { String name ->
+                def entry = jarFile.getJarEntry(name)
+                if (entry == null) throw new GradleException("Missing ${name} in ${artifactTask.archiveFile.get().asFile.name}")
+                entry
+            }
+            def metadata = loaderName == 'fabric' ? 'fabric.mod.json' : "META-INF/${loaderName == 'neoforge' ? 'neoforge.mods.toml' : 'mods.toml'}"
+            def descriptor = jarFile.getInputStream(requireEntry(metadata)).getText('UTF-8')
+            requireEntry('pack.mcmeta')
+            if (descriptor.contains('${version}')) throw new GradleException('Unexpanded mod version')
+            ['fabric.mod.json', 'META-INF/mods.toml', 'META-INF/neoforge.mods.toml'].findAll { it != metadata }.each {
+                if (jarFile.getJarEntry(it) != null) throw new GradleException("Foreign loader metadata: ${it}")
+            }
+            if (modId == 'cubicchunks') {
+                if (jarFile.getJarEntry('io/github/opencubicchunks/cubicchunks/mixin/core/client/LoaderSmokeProbe.class') != null) {
+                    throw new GradleException('Development probe present: rebuild without -PloaderSmoke before distributing')
+                }
+                def coreEntry = jarFile.entries().find { it.name.toLowerCase().contains('cubicchunkscore') && it.name.endsWith('.jar') }
+                if (coreEntry == null) throw new GradleException('Missing Core JAR')
+                new java.util.jar.JarInputStream(jarFile.getInputStream(coreEntry)).withCloseable { core ->
+                    def entry
+                    boolean found = false
+                    while ((entry = core.nextJarEntry) != null) {
+                        if (entry.name == 'io/github/opencubicchunks/cc_core/api/CubePos.class') {
+                            def bytecode = new String(core.readAllBytes(), java.nio.charset.StandardCharsets.ISO_8859_1)
+                            if (!bytecode.contains('net/minecraft/core/BlockPos') || bytecode.contains('cc_core/minecraft/MCBlockPos')) {
+                                throw new GradleException('Bundled Core still references JavaHeaders stubs instead of Minecraft classes')
+                            }
+                            found = true
+                            break
+                        }
+                    }
+                    if (!found) throw new GradleException('Missing CubePos in bundled Core')
+                }
+                ['cubicchunks.mixins.core.json', 'cubicchunks.mixins.access.json', 'cubicchunks.dasm.json'].each(requireEntry)
+                ['Platform', 'ClientPlatform'].each { service ->
+                    def path = "META-INF/services/io.github.opencubicchunks.cubicchunks.platform.${service}"
+                    def provider = jarFile.getInputStream(requireEntry(path)).getText('UTF-8').trim()
+                    if (!provider.contains(".platform.${loaderName}.")) throw new GradleException("Wrong service provider: ${provider}")
+                    requireEntry(provider.replace('.', '/') + '.class')
+                }
+                if (loaderName == 'fabric') {
+                    requireEntry('cubicchunks.accesswidener')
+                    def fabric = new groovy.json.JsonSlurper().parseText(descriptor)
+                    if (!fabric.jars || fabric.jars.size() < 2) throw new GradleException('Missing bundled libraries')
+                    fabric.jars.each { requireEntry(it.file) }
+                } else {
+                    requireEntry('META-INF/accesstransformer.cfg')
+                    def nested = new groovy.json.JsonSlurper().parseText(jarFile.getInputStream(requireEntry('META-INF/jarjar/metadata.json')).getText('UTF-8'))
+                    def paths = nested.jars.collect { it.path }
+                    if (!paths.any { it.toLowerCase().contains('dasm') } || !paths.any { it.toLowerCase().contains('cubicchunkscore') }) {
+                        throw new GradleException("Missing DASM or Core in nested jars: ${paths}")
+                    }
+                    paths.each(requireEntry)
+                }
+            } else if (modId == 'dasm') {
+                requireEntry('dasm-mod.mixins.json')
+                requireEntry("io/github/notstirred/dasm/mod/${loaderName}/DasmConfigPlugin.class")
+                requireEntry('io/github/notstirred/dasm/mod/DasmService.class')
+            }
+        }
+    }
+}
+tasks.named('check') { dependsOn 'checkLoaderJar' }

@@ -1,0 +1,31 @@
+modLoader="javafml"
+loaderVersion="[12,)"
+license="MIT"
+dasm=["cubicchunks.dasm.json"]
+[[mods]]
+modId="cubicchunks"
+version="${version}"
+displayName="Cubic Chunks"
+description="Experimental cubic worlds for Minecraft 26.3."
+[[dependencies.cubicchunks]]
+modId="minecraft"
+type="required"
+versionRange="[26.3]"
+ordering="NONE"
+side="BOTH"
+[[dependencies.cubicchunks]]
+modId="neoforge"
+type="required"
+versionRange="[26.3.0.101,26.4)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.cubicchunks]]
+modId="dasm"
+type="required"
+versionRange="[3.2.0,4)"
+ordering="BEFORE"
+side="BOTH"
+[[mixins]]
+config="cubicchunks.mixins.core.json"
+[[mixins]]
+config="cubicchunks.mixins.access.json"

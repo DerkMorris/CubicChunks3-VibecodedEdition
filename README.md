@@ -3,7 +3,7 @@
 [English](README.md) | [Русский](README.ru.md)
 
 An experimental fork of OpenCubicChunks/CubicChunks3 for Minecraft Java Edition 26.3.
-Fabric is the currently supported platform. Code is organized by mod and loader, with shared components for future ports.
+Supports Fabric, Forge and NeoForge. Each loader has its own JAR, network registration and bootstrap; game logic is shared.
 
 ## Project structure
 
@@ -16,13 +16,18 @@ mods/
     fabric/src/main/       # entrypoints, network registration, Fabric services and metadata
     fabric/src/test/       # Fabric integration tests
     fabric/world-smoke/    # separate test mod for checks in the actual game client
-    forge/                 # reserved for a future port
-    neoforge/legacy/       # original NeoForge adapters preserved for future porting
+    forge/src/main/        # Forge entrypoints, networking, services and metadata
+    neoforge/src/main/     # NeoForge entrypoints, networking, services and metadata
+    neoforge/src/test/     # native FML bootstrap and cube integration test
+    loader-smoke/          # opt-in Forge/NeoForge real-client probe
+    neoforge/legacy/       # archived adapters, excluded from the build
   dasm/
     mod.properties
     common/src/main/       # integration of DASM transformations with Mixin
     fabric/src/main/       # configuration discovery and bootstrap through Fabric
     fabric/src/test/       # bytecode and configuration tests
+    forge/src/main/        # Forge DASM configuration discovery
+    neoforge/src/main/     # NeoForge DASM configuration discovery
 libraries/
   cubicchunks-core/        # vendored Core sources with fixes for 26.3
 gradle/                     # shared build rules
@@ -32,14 +37,14 @@ legacy/                     # historical sources excluded from the build
 docs/port-history.md        # details of earlier porting milestones
 ```
 
-Gradle currently includes `common` and `fabric`. The Forge and NeoForge directories describe future work.
-To add a loader, provide its `build.gradle`, entrypoints, metadata and service implementations.
+Gradle includes `common`, `fabric`, `forge` and `neoforge` for both mods.
 The `checkLoaderIndependence` check prevents loader API references in shared production code.
 
-Shared Minecraft code is compiled independently. Loom provides Minecraft and access to its classes during the build.
+Shared Minecraft code is compiled separately against each loader's Minecraft distribution using Loom, ForgeGradle or ModDevGradle.
 The `Platform` and `ClientPlatform` services are provided through Java ServiceLoader.
 Client handlers are registered only by the client entrypoint.
 Game code tests from both directories run through Fabric Loader in the `:cubicchunks:fabric:test` task.
+NeoForge also runs `:cubicchunks:neoforge:test` through its native loader. `checkLoaderJar` validates metadata, services and bundled dependencies in each installable JAR.
 
 ## Building
 
@@ -51,6 +56,8 @@ The Gradle Wrapper is included. No Git submodules are required to build the proj
 | `.\dev.cmd listMods` | List mods, versions and configured loaders |
 | `.\dev.cmd build` | Build and check all configured modules |
 | `.\dev.cmd :cubicchunks:fabric:build` | Build CubicChunks for Fabric |
+| `.\dev.cmd :cubicchunks:forge:build` | Build CubicChunks for Forge |
+| `.\dev.cmd :cubicchunks:neoforge:build` | Build CubicChunks for NeoForge |
 | `.\dev.cmd :dasm:fabric:build` | Build the DASM adapter for Fabric |
 | `.\dev.cmd runClient` | Launch a separate development client |
 | `.\dev.cmd :cubicchunks:fabric:runServer` | Launch a development server |
@@ -59,8 +66,11 @@ The Gradle Wrapper is included. No Git submodules are required to build the proj
 On Linux/macOS, use `./gradlew` with the same tasks.
 Built JARs for all mods are collected in the root `build/libs`; individual mod builds are in `mods/<id>/build/libs`.
 Files named `*-sources.jar` contain source code.
-The main CubicChunks JAR includes the DASM adapter, Core and configuration libraries.
-The game client requires Fabric API for Minecraft 26.3. A normal installation needs the main CubicChunks JAR and Fabric API.
+Install exactly one `cubicchunks-<loader>-*.jar` matching the installed loader. DASM and Core are bundled; do not install the standalone DASM JAR alongside it.
+Fabric additionally requires Fabric API for Minecraft 26.3. Forge and NeoForge supply their configuration libraries and need no Fabric dependencies.
+The configured baseline versions are Fabric Loader 0.20.1, Forge 66.1.5 and NeoForge 26.3.0.101, on Minecraft 26.3 / JDK 25.
+Forge's bundled Mixin requires Java 21 mod bytecode; its game process still requires JDK 25.
+Use `:cubicchunks:forge:runClient` / `runServer` or `:cubicchunks:neoforge:runClient` / `runServer` for native development runs. Their files are isolated under `run/<loader>/<client|server>`.
 
 Mod versions are defined in `mods/<id>/mod.properties`; tool and Minecraft versions are defined in the root `gradle.properties`.
 The `cubicchunks` mod ID, save format and network packet IDs have been preserved.
@@ -76,6 +86,10 @@ The first run creates a separate world through the game menus and checks world g
 The second checks the saved world. Files are stored in `run/world-smoke`.
 The test mod is excluded from distributed JARs.
 Other scenarios are described in `tools/verify/README.md`.
+
+For the Forge and NeoForge world-entry probes, run `:cubicchunks:forge:runClient` or `:cubicchunks:neoforge:runClient` with `-PloaderSmoke`.
+The probe creates a fresh cubic world, checks rendered terrain and a server-to-client block update, prints `CC_LOADER_SMOKE_PASSED` and exits.
+Rebuild without `-PloaderSmoke` before distributing; the artifact checks reject a JAR containing the probe.
 
 ## Credits and license
 

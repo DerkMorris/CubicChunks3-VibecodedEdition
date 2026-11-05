@@ -23,11 +23,18 @@ subprojects {
         options.release = 25
     }
     base.archivesName = "${modId}-${name}"
+    afterEvaluate {
+        if (name != 'common') apply from: rootProject.file('gradle/check-loader-jar.gradle')
+    }
 }
 tasks.register('collectJars', Sync) {
     subprojects.findAll { it.name != 'common' }.each { loader ->
         dependsOn "${loader.path}:assemble"
-        from(loader.layout.buildDirectory.dir('libs')) { include '*.jar' }
+        // Collect the current build's installable JAR and sources; omit Forge's slim intermediate.
+        from(providers.provider {
+            def artifact = loader.name == 'forge' && modId == 'cubicchunks' ? loader.tasks.named('jarJar').get() : loader.tasks.named('jar').get()
+            [artifact.archiveFile.get().asFile, loader.tasks.named('sourcesJar').get().archiveFile.get().asFile]
+        })
     }
     into layout.buildDirectory.dir('libs')
 }

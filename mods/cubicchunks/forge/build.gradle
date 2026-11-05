@@ -1,0 +1,67 @@
+plugins {
+    id 'net.minecraftforge.gradle' version "${forgegradle_version}"
+    id 'net.minecraftforge.jarjar' version '0.2.3'
+    id 'io.github.opencubicchunks.javaheaders' version '1.2.8'
+    id 'io.github.opencubicchunks.gradle.mixingen'
+    id 'io.github.opencubicchunks.gradle.dasmgen'
+}
+
+apply from: rootProject.file('gradle/cubicchunks-fml.gradle')
+
+// Forge ships upstream Mixin 0.8.7, whose highest supported language level is 21.
+// Minecraft still runs on JDK 25; keep the mixin bytecode within that Mixin's supported level.
+tasks.withType(JavaCompile).configureEach { options.release = 21 }
+configurations.configureEach { attributes.attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25) }
+mixinGen.defaultCompatibilityLevel = 'JAVA_21'
+
+minecraft {
+    accessTransformers = files(parent.file('common/src/main/resources/META-INF/accesstransformer.cfg'))
+    runs {
+        configureEach {
+            args '--mixin.config=dasm-mod.mixins.json', '--mixin.config=cubicchunks.mixins.core.json', '--mixin.config=cubicchunks.mixins.access.json'
+        }
+        register('client') { workingDir = rootProject.layout.projectDirectory.dir('run/forge/client') }
+        register('server') {
+            workingDir = rootProject.layout.projectDirectory.dir('run/forge/server')
+            args '--nogui'
+        }
+    }
+}
+repositories {
+    minecraft.mavenizer(it)
+    maven fg.forgeMaven
+    maven fg.minecraftLibsMaven
+}
+jarJar.register()
+configurations.named('jarJarClasspath') {
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+        attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+    }
+}
+tasks.named('jar') {
+    archiveClassifier = 'slim'
+    manifest.attributes 'MixinConfigs': 'cubicchunks.mixins.core.json,cubicchunks.mixins.access.json'
+}
+tasks.named('jarJar') {
+    archiveClassifier = ''
+    // JarJar 0.2.3 reads legacy ResolvedArtifact files, bypassing Gradle transforms.
+    // Bundle the linked Core bytecode under the filename recorded in its generated metadata.
+    from(configurations.jarJarClasspath) {
+        include '*CubicChunksCore*-headerReplacement.jar'
+        into 'META-INF/jarjar'
+        rename { it.replace('-headerReplacement', '') }
+    }
+    eachFile {
+        if (path.startsWith('META-INF/jarjar/') && file.name == "CubicChunksCore-${project(':libraries:cubicchunks-core').version}.jar") {
+            exclude()
+        }
+    }
+}
+dependencies {
+    implementation minecraft.dependency("net.minecraftforge:forge:${minecraft_version}-${forge_version}")
+    implementation project(':dasm:forge')
+    jarJar project(':dasm:forge')
+    jarJar project(':libraries:cubicchunks-core')
+}

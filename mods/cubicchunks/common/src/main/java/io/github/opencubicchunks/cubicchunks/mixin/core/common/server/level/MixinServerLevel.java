@@ -95,7 +95,7 @@ public abstract class MixinServerLevel extends MixinLevel implements CubicServer
 
     @Shadow @Final private PersistentEntitySectionManager<Entity> entityManager;
 
-    @Inject(method = "<init>", at = @At(value = "FIELD", target = "Lnet/minecraft/server/level/ServerLevel;entityManager:Lnet/minecraft/world/level/entity/PersistentEntitySectionManager;", opcode = Opcodes.PUTFIELD, shift = At.Shift.AFTER))
+    @Inject(method = "<init>", at = @At(value = "FIELD", unsafe = true, target = "Lnet/minecraft/server/level/ServerLevel;entityManager:Lnet/minecraft/world/level/entity/PersistentEntitySectionManager;", opcode = Opcodes.PUTFIELD, shift = At.Shift.AFTER))
     private void cc_configureCubeEntities(
             MinecraftServer server, Executor dispatcher, LevelStorageSource.LevelStorageAccess storage, ServerLevelData data,
             ResourceKey<net.minecraft.world.level.Level> dimension, LevelStem stem, boolean debug, long seed, List spawners, boolean tickTime,
@@ -156,7 +156,7 @@ public abstract class MixinServerLevel extends MixinLevel implements CubicServer
         }
     }
 
-    @Inject(method = "<init>", at = @At("CTOR_HEAD"))
+    @Inject(method = "<init>", at = @At(value = "CTOR_HEAD", unsafe = true))
     private void cc_onInit(
             MinecraftServer server, Executor dispatcher, LevelStorageSource.LevelStorageAccess levelStorageAccess, ServerLevelData serverLevelData,
             ResourceKey dimension, LevelStem levelStem, boolean isDebug, long biomeZoomSeed, List customSpawners, boolean tickTime, CallbackInfo ci

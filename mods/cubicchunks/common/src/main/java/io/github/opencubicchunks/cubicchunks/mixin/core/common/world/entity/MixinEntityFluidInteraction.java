@@ -46,7 +46,7 @@ public class MixinEntityFluidInteraction {
         return fluid;
     }
 
-    @ModifyVariable(method = "update", at = @At("STORE"))
+    @ModifyVariable(method = "update*", at = @At("STORE"))
     private BlockGetter cc_fluidReader(BlockGetter original) {
         return original instanceof Level level && ((CanBeCubic) level).cc_isCubic() ? new CubeMobBlockView(level) : original;
     }

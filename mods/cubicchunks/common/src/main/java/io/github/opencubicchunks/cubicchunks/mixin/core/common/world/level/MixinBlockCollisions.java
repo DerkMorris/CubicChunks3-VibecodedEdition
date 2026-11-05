@@ -33,7 +33,7 @@ public class MixinBlockCollisions {
     @Unique
     private boolean cc_isCubic;
 
-    @Inject(method = "<init>(Lnet/minecraft/world/level/CollisionGetter;Lnet/minecraft/world/phys/shapes/CollisionContext;Lnet/minecraft/world/phys/AABB;ZLjava/util/function/BiFunction;)V", at = @At("CTOR_HEAD"))
+    @Inject(method = "<init>(Lnet/minecraft/world/level/CollisionGetter;Lnet/minecraft/world/phys/shapes/CollisionContext;Lnet/minecraft/world/phys/AABB;ZLjava/util/function/BiFunction;)V", at = @At(value = "CTOR_HEAD", unsafe = true))
     private void cc_onInit(
             CollisionGetter getter, CollisionContext context, AABB box, boolean onlySuffocatingBlocks, BiFunction resultProvider, CallbackInfo ci
     ) {

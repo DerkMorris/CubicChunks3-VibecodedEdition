@@ -20,7 +20,6 @@ import io.github.opencubicchunks.cubicchunks.world.level.cube.LevelCube;
 import io.github.opencubicchunks.cubicchunks.world.level.entity.CubeMobBlockView;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -95,7 +94,7 @@ public abstract class MixinLevel implements CubicLevel, MarkableAsCubic, LevelAc
         }
     }
 
-    @Inject(method = "<init>", at = @At(value = "CTOR_HEAD"))
+    @Inject(method = "<init>", at = @At(value = "CTOR_HEAD", unsafe = true))
     private void cc_init(
             net.minecraft.world.level.storage.WritableLevelData data, net.minecraft.resources.ResourceKey<Level> dimension,
             net.minecraft.core.RegistryAccess registries, net.minecraft.core.Holder<net.minecraft.world.level.dimension.DimensionType> type,
@@ -134,13 +133,6 @@ public abstract class MixinLevel implements CubicLevel, MarkableAsCubic, LevelAc
             return levelCubeLocalRef.get().setBlockState(blockPos, blockState, flags);
         }
         return original.call(levelChunk, blockPos, blockState, flags);
-    }
-
-    @WrapOperation(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/chunk/LevelChunk;getFullStatus()Lnet/minecraft/server/level/FullChunkStatus;"))
-    private FullChunkStatus cc_replaceLevelChunkStatusInSetBlock(
-            LevelChunk levelChunk, Operation<FullChunkStatus> original, @Share("levelCube") LocalRef<LevelCube> levelCubeLocalRef
-    ) {
-        return cc_isCubic ? levelCubeLocalRef.get().getFullStatus() : original.call(levelChunk);
     }
 
     // getBlockState

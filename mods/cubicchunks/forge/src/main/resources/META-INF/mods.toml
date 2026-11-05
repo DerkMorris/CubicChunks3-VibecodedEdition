@@ -1,0 +1,27 @@
+modLoader="javafml"
+loaderVersion="[66,)"
+license="MIT"
+dasm=["cubicchunks.dasm.json"]
+[[mods]]
+modId="cubicchunks"
+version="${version}"
+displayName="Cubic Chunks"
+description="Experimental cubic worlds for Minecraft 26.3."
+[[dependencies.cubicchunks]]
+modId="minecraft"
+mandatory=true
+versionRange="[26.3]"
+ordering="NONE"
+side="BOTH"
+[[dependencies.cubicchunks]]
+modId="forge"
+mandatory=true
+versionRange="[66.1.5,67)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.cubicchunks]]
+modId="dasm"
+mandatory=true
+versionRange="[3.2.0,4)"
+ordering="BEFORE"
+side="BOTH"

@@ -18,8 +18,7 @@ import org.spongepowered.asm.mixin.Mixin;
 @Dasm(value = ClientChunkToCubeSet.class, target = @Ref(SectionCopy.class))
 @Mixin(SectionCopy.class)
 public class MixinSectionCopy {
-    // Vanilla SectionCopy copies the section data and does not retain a wrapped LevelChunk.
-    // Its constructor can therefore be redirected without NeoForge's extra wrapped field.
+    // Loaders that retain the source chunk supply a matching cube field in their client mixins.
 
     @AddTransformToSets(ClientChunkToCubeSet.SectionCopy_redirects.class)
     @TransformFromMethod("<init>(Lnet/minecraft/world/level/chunk/LevelChunk;I)V")

@@ -8,6 +8,7 @@ import javax.annotation.Nullable;
 
 import io.github.notstirred.dasm.api.annotations.redirect.redirects.ConstructorToFactoryRedirect;
 import io.github.notstirred.dasm.api.annotations.redirect.redirects.FieldRedirect;
+import io.github.notstirred.dasm.api.annotations.redirect.redirects.FieldToMethodRedirect;
 import io.github.notstirred.dasm.api.annotations.redirect.redirects.MethodRedirect;
 import io.github.notstirred.dasm.api.annotations.redirect.redirects.TypeRedirect;
 import io.github.notstirred.dasm.api.annotations.redirect.sets.IntraOwnerContainer;
@@ -64,7 +65,7 @@ import net.minecraft.world.ticks.ProtoChunkTicks;
  * {@link GlobalSet}.
  */
 @RedirectSet
-public interface ChunkToCloSet extends GlobalSet {
+public interface ChunkToCloSet extends GlobalSet, LoaderRedirectSet.Clo {
     @TypeRedirect(from = @Ref(ChunkPos.class), to = @Ref(CloPos.class))
     abstract class ChunkPos_to_CloPos_redirects {
         @FieldRedirect("INVALID_CHUNK_POS:J")
@@ -186,7 +187,7 @@ public interface ChunkToCloSet extends GlobalSet {
     @TypeRedirect(from = @Ref(ChunkTrackingView.Positioned.class), to = @Ref(CloTrackingView.Positioned.class))
     abstract class ChunkTrackingView$Positioned_to_CloTrackingView$Positioned_redirects implements ChunkTrackingView_to_CloTrackingView_redirects {}
 
-    // NeoForge event/field redirects are absent: Fabric transforms the vanilla classes.
+    // Loader-added tracking hooks are supplied by LoaderRedirectSet.Clo.
 
     @IntraOwnerContainer(@Ref(ChunkHolder.class))
     class ChunkHolder_redirects extends GenerationChunkHolder_redirects {}
@@ -195,7 +196,14 @@ public interface ChunkToCloSet extends GlobalSet {
     class ChunkGenerationTask_redirects {}
 
     @IntraOwnerContainer(@Ref(GenerationChunkHolder.class))
-    class GenerationChunkHolder_redirects {}
+    abstract class GenerationChunkHolder_redirects {
+        // FML's reentrant-load shortcut must select the holder's column or cube storage.
+        @FieldToMethodRedirect("currentlyLoading:Lnet/minecraft/world/level/chunk/LevelChunk;")
+        public native LevelClo cc_getCurrentlyLoading();
+
+        @FieldToMethodRedirect("currentlyLoading:Lnet/minecraft/world/level/chunk/LevelChunk;")
+        public native void cc_setCurrentlyLoading(LevelClo clo);
+    }
 
     @IntraOwnerContainer(@Ref(SimpleRegionStorage.class))
     class ChunkStorage_redirects {}

@@ -70,7 +70,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
  * should be added to {@link GlobalSet}.
  */
 @RedirectSet
-public interface ChunkToCubeSet extends GlobalSet {
+public interface ChunkToCubeSet extends GlobalSet, LoaderRedirectSet.Cube {
     @TypeRedirect(from = @Ref(ChunkPos.class), to = @Ref(CubePos.class))
     abstract class ChunkPos_to_CubePos_redirects {
         @FieldRedirect("INVALID_CHUNK_POS:J")
@@ -207,7 +207,7 @@ public interface ChunkToCubeSet extends GlobalSet {
     @IntraOwnerContainer(@Ref(ChunkHolder.class))
     abstract class ChunkHolder_redirects extends GenerationChunkHolder_redirects {}
 
-    // NeoForge event/field redirects are absent: Fabric transforms the vanilla classes.
+    // Loader-added cube hooks are supplied by LoaderRedirectSet.Cube.
 
     @InterOwnerContainer(from = @Ref(ChunkLevel.class), to = @Ref(CubeLevel.class))
     class ChunkLevel_to_CubeLevel_redirects {}

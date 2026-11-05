@@ -1,0 +1,5 @@
+plugins { id 'java-library' }
+apply from: rootProject.file('gradle/dasm-fml.gradle')
+dependencies { compileOnly 'net.minecraftforge:fmlloader:26.3-66.1.5' }
+tasks.withType(JavaCompile).configureEach { options.release = 21 }
+configurations.configureEach { attributes.attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25) }

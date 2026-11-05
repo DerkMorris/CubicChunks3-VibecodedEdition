@@ -178,7 +178,7 @@ public abstract class MixinServerChunkCache extends MixinChunkSource implements 
 
     @Shadow @Final private Set<ChunkHolder> chunkHoldersToBroadcast;
 
-    @Inject(method = "<init>", at = @At("CTOR_HEAD"))
+    @Inject(method = "<init>", at = @At(value = "CTOR_HEAD", unsafe = true))
     private void cc_onInit(
             ServerLevel level, LevelStorageSource.LevelStorageAccess levelStorageAccess, DataFixer fixerUpper,
             StructureTemplateManager structureManager, Executor dispatcher, ChunkGenerator generator, int viewDistance, int simulationDistance,

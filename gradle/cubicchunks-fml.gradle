@@ -1,0 +1,87 @@
+// Shared build rules for the two FML platforms. All Minecraft names are official in 26.3.
+repositories {
+    mavenCentral()
+    maven { url = 'https://jitpack.io' }
+}
+def sharedJava = objects.sourceDirectorySet('commonJava', 'Shared game code')
+sharedJava.srcDir parent.file('common/src/main/java')
+sharedJava.exclude 'io/github/opencubicchunks/cubicchunks/mixin/dasmsets/LoaderRedirectSet.java'
+sourceSets.main {
+    java.source sharedJava
+    resources.srcDir '../common/src/main/resources'
+    resources.exclude 'cubicchunks.accesswidener'
+}
+// Opt-in real-client probe. A normal build never compiles these sources.
+if (project.hasProperty('loaderSmoke')) {
+    sourceSets.main.java.srcDir '../loader-smoke/src/main/java'
+}
+javaHeaders {
+    setAcceptedJars('.*CubicChunksCore.*')
+    setConfig(parent.file('javaHeaders.json'))
+}
+dependencies {
+    implementation(project(':libraries:cubicchunks-core')) {
+        attributes { attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR)) }
+        transitive = false
+    }
+    compileOnly 'io.github.notstirred:dasm:3.2.0:api'
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+    implementation 'com.electronwill.night-config:core:3.9.0'
+    implementation 'com.electronwill.night-config:toml:3.9.0'
+}
+compileJava.dependsOn ':libraries:cubicchunks-core:jar'
+tasks.withType(JavaCompile).configureEach { options.compilerArgs += ['-proc:none', '-Xmaxerrs', '1000'] }
+
+// Keep one source of truth for both development access and the distributed AT.
+def accessWidener = parent.file('common/src/main/resources/cubicchunks.accesswidener')
+tasks.register('checkAccessTransformers') {
+    inputs.file accessWidener
+    def atFile = parent.file('common/src/main/resources/META-INF/accesstransformer.cfg')
+    inputs.file atFile
+    doLast {
+        def expected = accessWidener.readLines().collect { it.split('#', 2)[0].trim().tokenize() }
+                .findAll { !it.empty && it[0] != 'accessWidener' }.collect { words ->
+            if (words[0] != 'accessible') throw new GradleException("Unsupported access rule: ${words}")
+            def owner = words[2].replace('/', '.')
+            switch (words[1]) {
+                case 'class': return "public ${owner}".toString()
+                case 'field': return "public ${owner} ${words[3]}".toString()
+                case 'method': return "public ${owner} ${words[3]}${words[4]}".toString()
+                default: throw new GradleException("Unsupported access target: ${words}")
+            }
+        }
+        def actual = atFile.readLines().collect { it.split('#', 2)[0].trim() }.findAll { !it.empty }
+        if (actual != expected) throw new GradleException('Update common META-INF/accesstransformer.cfg to match cubicchunks.accesswidener')
+    }
+}
+tasks.named('check') { dependsOn 'checkAccessTransformers' }
+
+processResources {
+    dependsOn 'generateMixinConfigs', 'generateDasmConfigs'
+    inputs.property 'version', project.version
+    filesMatching('META-INF/*.toml') { expand version: project.version }
+}
+dasmGen {
+    filePattern = '%s.dasm.json'
+    defaultMinVersion = '3.2.0'
+    config(sourceSets.main, 'cubicchunks') { it.packageName = 'io.github.opencubicchunks.cubicchunks' }
+}
+mixinGen {
+    filePattern = 'cubicchunks.mixins.%s.json'
+    defaultRefmap = null
+    defaultPackagePrefix = 'io.github.opencubicchunks.cubicchunks.mixin'
+    defaultCompatibilityLevel = 'JAVA_25'
+    defaultMinVersion = '0.8'
+    config(sourceSets.main, 'core') {
+        it.required = true
+        it.conformVisibility = true
+        it.injectorsDefaultRequire = 1
+        it.configurationPlugin = 'io.github.opencubicchunks.cubicchunks.mixin.ASMConfigPlugin'
+    }
+    config(sourceSets.main, 'access') {
+        it.required = true
+        it.conformVisibility = true
+        it.injectorsDefaultRequire = 1
+    }
+}
+jar { from(rootProject.file('LICENSE')) { rename { "${it}_cubicchunks" } } }

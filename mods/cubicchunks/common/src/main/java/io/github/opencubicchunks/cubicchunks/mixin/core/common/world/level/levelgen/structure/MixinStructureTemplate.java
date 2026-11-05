@@ -28,6 +28,7 @@ import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Group;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -89,7 +90,8 @@ public abstract class MixinStructureTemplate {
         }
     }
 
-    @WrapOperation(method = "placeInWorld", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate;placeEntities(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Mirror;Lnet/minecraft/world/level/block/Rotation;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/levelgen/structure/BoundingBox;ZLnet/minecraft/util/ProblemReporter;)V"))
+    @Group(name = "cc_placeEntities", min = 1, max = 1)
+    @WrapOperation(method = "placeInWorld", require = 0, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate;placeEntities(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Mirror;Lnet/minecraft/world/level/block/Rotation;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/levelgen/structure/BoundingBox;ZLnet/minecraft/util/ProblemReporter;)V"))
     private void cc_placePreparedEntities(
             StructureTemplate template, ServerLevelAccessor level, BlockPos origin, Mirror mirror, Rotation rotation, BlockPos pivot, BoundingBox box,
             boolean finalizeEntities, ProblemReporter reporter, Operation<Void> original,
@@ -97,6 +99,36 @@ public abstract class MixinStructureTemplate {
     ) {
         if (entities.get() == null) {
             original.call(template, level, origin, mirror, rotation, pivot, box, finalizeEntities, reporter);
+        } else {
+            entities.get().place();
+        }
+    }
+
+    // FML distributions pass placement settings to their entity-processor hooks.
+    // Exactly one of these three descriptors must match the installed Minecraft.
+    @Group(name = "cc_placeEntities", min = 1, max = 1)
+    @WrapOperation(method = "placeInWorld", require = 0, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate;placeEntities(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Mirror;Lnet/minecraft/world/level/block/Rotation;Lnet/minecraft/world/level/levelgen/structure/BoundingBox;ZLnet/minecraft/util/ProblemReporter;Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructurePlaceSettings;)V"))
+    private void cc_placePreparedEntitiesForge(
+            StructureTemplate template, ServerLevelAccessor level, BlockPos origin, Mirror mirror, Rotation rotation, BoundingBox box,
+            boolean finalizeEntities, ProblemReporter reporter, StructurePlaceSettings settings, Operation<Void> original,
+            @Share("cc_entities") LocalRef<CubeTemplateEntities.Placement> entities
+    ) {
+        if (entities.get() == null) {
+            original.call(template, level, origin, mirror, rotation, box, finalizeEntities, reporter, settings);
+        } else {
+            entities.get().place();
+        }
+    }
+
+    @Group(name = "cc_placeEntities", min = 1, max = 1)
+    @WrapOperation(method = "placeInWorld", require = 0, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate;placeEntities(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Mirror;Lnet/minecraft/world/level/block/Rotation;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/levelgen/structure/BoundingBox;ZLnet/minecraft/util/ProblemReporter;Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructurePlaceSettings;)V"))
+    private void cc_placePreparedEntitiesNeoForge(
+            StructureTemplate template, ServerLevelAccessor level, BlockPos origin, Mirror mirror, Rotation rotation, BlockPos pivot, BoundingBox box,
+            boolean finalizeEntities, ProblemReporter reporter, StructurePlaceSettings settings, Operation<Void> original,
+            @Share("cc_entities") LocalRef<CubeTemplateEntities.Placement> entities
+    ) {
+        if (entities.get() == null) {
+            original.call(template, level, origin, mirror, rotation, pivot, box, finalizeEntities, reporter, settings);
         } else {
             entities.get().place();
         }

@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8.7",
+  "compatibilityLevel": "JAVA_25",
+  "priority": 2000,
+  "plugin": "io.github.notstirred.dasm.mod.neoforge.DasmConfigPlugin",
+  "package": "io.github.notstirred.dasm.mod.dummy.mixins",
+  "mixins": [
+    "Dummy1",
+    "IDummy",
+    "Dummy2"
+  ]
+}

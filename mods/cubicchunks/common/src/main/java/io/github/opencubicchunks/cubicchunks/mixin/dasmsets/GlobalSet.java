@@ -18,7 +18,7 @@ import net.minecraft.world.level.entity.ChunkStatusUpdateListener;
  * contexts.
  */
 @RedirectSet
-public interface GlobalSet {
+public interface GlobalSet extends LoaderRedirectSet.Global {
     @TypeRedirect(from = @Ref(ChunkStatusUpdateListener.class), to = @Ref(CloStatusUpdateListener.class))
     interface ChunkStatusUpdateListener_to_CloStatusUpdateListener_redirects {}
 

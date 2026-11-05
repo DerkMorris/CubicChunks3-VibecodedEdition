@@ -8,15 +8,12 @@ import javax.annotation.Nullable;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import io.github.opencubicchunks.cubicchunks.CanBeCubic;
 import io.github.opencubicchunks.cubicchunks.world.level.entity.CubeEntityPersistence;
 import io.github.opencubicchunks.cubicchunks.world.level.entity.CubeEntityVisibility;
 import io.github.opencubicchunks.cubicchunks.world.level.entity.CubicEntityManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.entity.EntityAccess;
-import net.minecraft.world.level.entity.EntityInLevelCallback;
 import net.minecraft.world.level.entity.EntityPersistentStorage;
 import net.minecraft.world.level.entity.LevelEntityGetter;
 import net.minecraft.world.level.entity.PersistentEntitySectionManager;
@@ -27,7 +24,6 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(PersistentEntitySectionManager.class)
 public abstract class MixinPersistentEntitySectionManager implements CubicEntityManager {
@@ -54,20 +50,6 @@ public abstract class MixinPersistentEntitySectionManager implements CubicEntity
 
     @Override public @Nullable CubeEntityVisibility cc_entityVisibility() {
         return cc_level != null && ((CanBeCubic) cc_level).cc_isCubic() ? cc_visibility : null;
-    }
-
-    @WrapOperation(method = "addEntity", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/entity/EntityAccess;setLevelCallback(Lnet/minecraft/world/level/entity/EntityInLevelCallback;)V"))
-    private void cc_wrapEntityCallback(EntityAccess entity, EntityInLevelCallback callback, Operation<Void> original) {
-        CubeEntityVisibility visibility = cc_entityVisibility();
-        original.call(entity, visibility == null ? callback : visibility.wrap((Entity) entity, callback));
-    }
-
-    @Inject(method = "addEntity", at = @At("RETURN"))
-    private void cc_activateEntity(EntityAccess entity, boolean loaded, CallbackInfoReturnable<Boolean> cir) {
-        CubeEntityVisibility visibility = cc_entityVisibility();
-        if (visibility != null && cir.getReturnValue()) {
-            visibility.activate((Entity) entity);
-        }
     }
 
     @ModifyReturnValue(method = "getEntityGetter", at = @At("RETURN"))

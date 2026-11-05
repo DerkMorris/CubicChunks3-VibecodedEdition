@@ -18,6 +18,7 @@ import io.github.opencubicchunks.cubicchunks.mixin.dasmsets.ChunkToCloSet;
 import io.github.opencubicchunks.cubicchunks.network.CCClientboundForgetLevelCloPacket;
 import io.github.opencubicchunks.cubicchunks.network.CCClientboundLevelChunkPacket;
 import io.github.opencubicchunks.cubicchunks.network.CCClientboundLevelCubeWithLightPacket;
+import io.github.opencubicchunks.cubicchunks.platform.Platform;
 import io.github.opencubicchunks.cubicchunks.server.level.CubicChunkMap;
 import io.github.opencubicchunks.cubicchunks.server.level.ServerCubeCache;
 import io.github.opencubicchunks.cubicchunks.server.network.CubeEntityTrackingSender;
@@ -25,7 +26,6 @@ import io.github.opencubicchunks.cubicchunks.world.entity.EntityCubePosGetter;
 import io.github.opencubicchunks.cubicchunks.world.level.chunklike.LevelClo;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.LevelCube;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import io.github.opencubicchunks.cubicchunks.platform.Platform;
 import net.minecraft.network.protocol.game.ClientboundChunkBatchFinishedPacket;
 import net.minecraft.network.protocol.game.ClientboundChunkBatchStartPacket;
 import net.minecraft.server.level.ChunkMap;
@@ -172,13 +172,12 @@ public class MixinPlayerChunkSender implements CubeEntityTrackingSender {
     private native List<LevelClo> cc_collectChunksToSend(ChunkMap chunkMap, CloPos cloPos);
 
     // Send supporting columns before cubes, then prioritize the positions nearest the player within each group.
-    @Dynamic @Redirect(method = "cc_collectChunksToSend", at = @At(ordinal = 1, value = "INVOKE", target = "Ljava/util/Comparator;comparingInt(Ljava/util/function/ToIntFunction;)Ljava/util/Comparator;"))
-    private Comparator<Long> cc_onCollectChunksToSend_comparator1(ToIntFunction<Long> keyExtractor) {
-        return Comparator.<Long>comparingInt(pos -> CloPos.isChunk(pos) ? 0 : 1).thenComparingInt(keyExtractor);
-    }
-
-    @Dynamic @Redirect(method = "cc_collectChunksToSend", at = @At(ordinal = 0, value = "INVOKE", target = "Ljava/util/Comparator;comparingInt(Ljava/util/function/ToIntFunction;)Ljava/util/Comparator;"))
-    private Comparator<LevelClo> cc_onCollectChunksToSend_comparator2(ToIntFunction<LevelClo> keyExtractor) {
-        return Comparator.<LevelClo>comparingInt(clo -> clo.cc_getCloPos().isChunk() ? 0 : 1).thenComparingInt(keyExtractor);
+    // Patched Minecraft is recompiled by FML; the two branches can appear in a different bytecode order.
+    @Dynamic @Redirect(method = "cc_collectChunksToSend", at = @At(value = "INVOKE", target = "Ljava/util/Comparator;comparingInt(Ljava/util/function/ToIntFunction;)Ljava/util/Comparator;"), require = 2)
+    private <T> Comparator<T> cc_onCollectChunksToSend_columnFirst(ToIntFunction<T> keyExtractor) {
+        return Comparator.<T>comparingInt(value -> {
+            boolean column = value instanceof Long packed ? CloPos.isChunk(packed) : ((LevelClo) value).cc_getCloPos().isChunk();
+            return column ? 0 : 1;
+        }).thenComparingInt(keyExtractor);
     }
 }

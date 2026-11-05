@@ -1,0 +1,8 @@
+modLoader="lowcodefml"
+loaderVersion="[66,)"
+license="MIT"
+[[mods]]
+modId="dasm"
+version="${version}"
+displayName="DASM (CubicChunks forge adapter)"
+description="Declarative bytecode transforms for Minecraft 26.3."

@@ -20,7 +20,6 @@ import it.unimi.dsi.fastutil.shorts.ShortOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundBlockEventPacket;
 import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
@@ -46,15 +45,18 @@ public abstract class MixinServerCommonPacketListenerImpl {
             if (!CubicBlockBounds.contains(pos)) {
                 return;
             }
-            original.call(new ClientboundCustomPayloadPacket(cc_correction(game, update)), listener);
+            original.call(io.github.opencubicchunks.cubicchunks.platform.Platform.get().outboundPacket(cc_correction(game, update)), listener);
             return;
         }
         if (packet instanceof ClientboundOpenSignEditorPacket sign) {
-            original.call(new ClientboundCustomPayloadPacket(new CCClientboundCubeOpenSignEditorPacket(sign.pos(), sign.slot())), listener);
+            original.call(io.github.opencubicchunks.cubicchunks.platform.Platform.get()
+                    .outboundPacket(new CCClientboundCubeOpenSignEditorPacket(sign.pos(), sign.slot())), listener);
             return;
         }
         if (packet instanceof ClientboundBlockEntityDataPacket entity) {
-            original.call(new ClientboundCustomPayloadPacket(CCClientboundCubeBlockEntityDataPacket.from(entity)), listener);
+            original.call(
+                    io.github.opencubicchunks.cubicchunks.platform.Platform.get().outboundPacket(CCClientboundCubeBlockEntityDataPacket.from(entity)),
+                    listener);
             return;
         }
         cc_sendEvent(packet, listener, original);
@@ -63,11 +65,15 @@ public abstract class MixinServerCommonPacketListenerImpl {
     private static void cc_sendEvent(Packet<?> packet, ChannelFutureListener listener, Operation<Void> original) {
         if (packet instanceof ClientboundBlockEventPacket event) {
             if (CubicBlockBounds.contains(event.getPos())) {
-                original.call(new ClientboundCustomPayloadPacket(CCClientboundCubeBlockEventPacket.from(event)), listener);
+                original.call(
+                        io.github.opencubicchunks.cubicchunks.platform.Platform.get().outboundPacket(CCClientboundCubeBlockEventPacket.from(event)),
+                        listener);
             }
         } else if (packet instanceof ClientboundLevelEventPacket event) {
             if (CubicBlockBounds.contains(event.getPos())) {
-                original.call(new ClientboundCustomPayloadPacket(CCClientboundCubeLevelEventPacket.from(event)), listener);
+                original.call(
+                        io.github.opencubicchunks.cubicchunks.platform.Platform.get().outboundPacket(CCClientboundCubeLevelEventPacket.from(event)),
+                        listener);
             }
         } else {
             original.call(packet, listener);

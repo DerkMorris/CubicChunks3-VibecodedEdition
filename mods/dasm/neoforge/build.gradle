@@ -1,0 +1,3 @@
+plugins { id 'java-library' }
+apply from: rootProject.file('gradle/dasm-fml.gradle')
+dependencies { compileOnly 'net.neoforged.fancymodloader:loader:12.0.12' }

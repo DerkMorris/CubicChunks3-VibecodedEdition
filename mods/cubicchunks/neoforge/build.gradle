@@ -1,0 +1,44 @@
+plugins {
+    id 'net.neoforged.moddev' version "${moddev_version}"
+    id 'io.github.opencubicchunks.javaheaders' version '1.2.8'
+    id 'io.github.opencubicchunks.gradle.mixingen'
+    id 'io.github.opencubicchunks.gradle.dasmgen'
+}
+
+apply from: rootProject.file('gradle/cubicchunks-fml.gradle')
+
+neoForge {
+    version = neoforge_version
+    accessTransformers.from parent.file('common/src/main/resources/META-INF/accesstransformer.cfg')
+    validateAccessTransformers = true
+    runs {
+        client { client(); gameDirectory = rootProject.file('run/neoforge/client') }
+        server {
+            server()
+            gameDirectory = rootProject.file('run/neoforge/server')
+            programArgument '--nogui'
+        }
+    }
+    mods { cubicchunks { sourceSet sourceSets.main } }
+    unitTest {
+        enable()
+        testedMod = mods.cubicchunks
+    }
+}
+
+dependencies {
+    implementation project(':dasm:neoforge')
+    jarJar project(':dasm:neoforge')
+    jarJar project(':libraries:cubicchunks-core')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.4'
+    testImplementation "net.neoforged:testframework:${neoforge_version}"
+}
+test {
+    // FML loads the adapter JAR, while Java's test runtime variant resolves its loose classes.
+    dependsOn ':dasm:neoforge:jar'
+    useJUnitPlatform()
+    maxHeapSize = '2G'
+    testLogging.exceptionFormat = 'full'
+}
+mixinGen.config(sourceSets.test, 'test') { it.required = true }

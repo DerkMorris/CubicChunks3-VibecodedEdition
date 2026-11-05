@@ -57,3 +57,8 @@ Thumbs.db
 Desktop.ini
 
 # Do not ignore *.jar globally: Gradle wrapper JARs belong in Git.
+
+# Generated loader configurations
+/mods/cubicchunks/forge/src/main/resources/cubicchunks.*.json
+/mods/cubicchunks/neoforge/src/main/resources/cubicchunks.*.json
+/mods/cubicchunks/neoforge/src/test/resources/cubicchunks.mixins.test.json

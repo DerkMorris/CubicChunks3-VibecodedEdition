@@ -7,12 +7,10 @@ import io.github.opencubicchunks.cubicchunks.network.CCServerboundCubeSetStructu
 import io.github.opencubicchunks.cubicchunks.network.CCServerboundCubeSignUpdatePacket;
 import io.github.opencubicchunks.cubicchunks.network.CCServerboundCubeUseItemOnPacket;
 import io.github.opencubicchunks.cubicchunks.platform.ClientPlatform;
-import io.github.opencubicchunks.cubicchunks.platform.ClientPacketContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCommandBlockPacket;
@@ -41,7 +39,7 @@ public abstract class MixinClientCommonPacketListenerImpl {
         if (!ClientPlatform.get().canSend(payload.type())) {
             throw new IllegalStateException("Cubic player actions require a matching server protocol");
         }
-        return new ServerboundCustomPayloadPacket(payload);
+        return ClientPlatform.get().outboundPacket(payload);
     }
 
     private static CustomPacketPayload cc_cubePayload(Packet<?> packet) {
