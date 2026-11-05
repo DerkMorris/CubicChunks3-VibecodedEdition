@@ -1,0 +1,13 @@
+tasks.register('checkLoaderIndependence') {
+    def sources = fileTree('src/main/java') { include '**/*.java' }
+    inputs.files(sources)
+    doLast {
+        sources.each { source ->
+            def code = source.text.replaceAll(/(?s)\/\*.*?\*\//, '').replaceAll(/(?m)\/\/.*$/, '')
+            if (code =~ /net\.(fabricmc|minecraftforge|neoforged)\./) {
+                throw new GradleException("Loader API used in common code: ${source}")
+            }
+        }
+    }
+}
+tasks.named('check') { dependsOn 'checkLoaderIndependence' }

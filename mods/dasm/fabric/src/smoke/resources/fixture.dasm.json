@@ -1,0 +1,4 @@
+{
+  "dasm": ["smoke.game.Target"],
+  "client": ["intentionally.absent.ClientOnlyClass"]
+}

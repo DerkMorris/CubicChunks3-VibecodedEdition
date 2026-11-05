@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 import com.google.gson.stream.JsonWriter;
 import org.gradle.api.Action;
 import org.gradle.api.file.SourceDirectorySet;
-import org.gradle.api.plugins.JavaPluginConvention;
+import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.tasks.SourceSet;
 
 @SuppressWarnings("unused")
@@ -81,7 +81,7 @@ public class DasmGenExtension {
         }
     }
 
-    void generateFiles(JavaPluginConvention convention) throws IOException {
+    void generateFiles(JavaPluginExtension convention) throws IOException {
         convention.getSourceSets().forEach(sourceSet -> {
             Map<String, Action<DasmConfig>> configs = configsBySourceSet.get(sourceSet);
             if (configs == null) {
@@ -128,7 +128,7 @@ public class DasmGenExtension {
         });
     }
 
-    private void writeDasm(JavaPluginConvention convention, SourceSet sourceSet, String name, DasmConfig config, JsonWriter writer)
+    private void writeDasm(JavaPluginExtension convention, SourceSet sourceSet, String name, DasmConfig config, JsonWriter writer)
             throws IOException {
         Set<String> dasmTypes = getDasmClasses(config, sourceSet.getAllJava());
 
@@ -141,19 +141,24 @@ public class DasmGenExtension {
 
         List<String> types = dasmTypes.stream().map(transform).sorted(Comparator.comparing(a -> a.toLowerCase(Locale.ROOT))).toList();
 
-        writer.name("dasm").beginArray();
-        for (String path : types) {
-            writer.value(path);
+        // Client classes do not exist on a dedicated server. Keep their transforms
+        // out of the common list so the Fabric adapter never attempts to load them.
+        for (String side : List.of("dasm", "client")) {
+            writer.name(side).beginArray();
+            for (String path : types) {
+                boolean client = path.contains(".client.");
+                if (client == side.equals("client")) {
+                    writer.value(path);
+                }
+            }
+            writer.endArray();
         }
-        writer.endArray();
     }
 
     private Set<String> getDasmClasses(DasmConfig config, SourceDirectorySet allJava) throws IOException {
-        System.out.println("GetDasm Classes");
         Set<Path> srcPaths = new HashSet<>();
         for (File file : allJava.getSrcDirs()) {
             Path toPath = file.getCanonicalFile().toPath();
-            System.out.println("GetDasm " + toPath);
 
             srcPaths.add(toPath);
         }
@@ -161,7 +166,6 @@ public class DasmGenExtension {
         Set<String> dasmTypes = new HashSet<>();
         for (File it : allJava) {
             Path javaClass = it.getCanonicalFile().toPath();
-            System.out.println("Class:  " + javaClass);
             for (Path srcPath : srcPaths) {
                 if (javaClass.startsWith(srcPath)) {
                     String relative = srcPath.relativize(javaClass).toString();

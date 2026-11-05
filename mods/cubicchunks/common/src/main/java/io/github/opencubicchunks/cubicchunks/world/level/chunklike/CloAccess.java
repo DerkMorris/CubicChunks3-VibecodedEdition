@@ -1,0 +1,165 @@
+package io.github.opencubicchunks.cubicchunks.world.level.chunklike;
+
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+
+import javax.annotation.Nullable;
+
+import io.github.opencubicchunks.cc_core.world.level.CloPos;
+import io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CloHeightmap;
+import it.unimi.dsi.fastutil.shorts.ShortList;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeGenerationSettings;
+import net.minecraft.world.level.biome.BiomeResolver;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.LightChunk;
+import net.minecraft.world.level.chunk.StructureAccess;
+import net.minecraft.world.level.chunk.UpgradeData;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.gameevent.GameEventListenerRegistry;
+import net.minecraft.world.level.levelgen.BelowZeroRetrogen;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.blending.BlendingData;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.ticks.TickContainerAccess;
+
+public interface CloAccess extends BlockGetter, BiomeResolver, LightChunk, StructureAccess {
+    GameEventListenerRegistry getListenerRegistry(int sectionY);
+
+    @Nullable BlockState setBlockState(BlockPos pos, BlockState state);
+
+    @Nullable BlockState setBlockState(BlockPos pos, BlockState state, int flags);
+
+    void setBlockEntity(BlockEntity blockEntity);
+
+    void addEntity(Entity entity);
+
+    int getHighestFilledSectionIndex();
+
+    // Deprecated
+    int getHighestSectionPosition();
+
+    Set<BlockPos> getBlockEntitiesPos();
+
+    LevelChunkSection[] getSections();
+
+    LevelChunkSection getSection(int index);
+
+    Collection<Map.Entry<Heightmap.Types, CloHeightmap>> cc_getHeightmaps();
+
+    void setHeightmap(Heightmap.Types type, long[] data);
+
+    CloHeightmap cc_getOrCreateHeightmapUnprimed(Heightmap.Types type);
+
+    boolean hasPrimedHeightmap(Heightmap.Types type);
+
+    int getHeight(Heightmap.Types type, int x, int z);
+
+    // replacement of ChunkPos getPos()
+    CloPos cc_getCloPos();
+
+    Map<Structure, StructureStart> getAllStarts();
+
+    void setAllStarts(Map<Structure, StructureStart> structureStarts);
+
+    boolean isYSpaceEmpty(int startY, int endY);
+
+    boolean isSectionEmpty(int sectionY);
+
+    void markUnsaved();
+
+    boolean tryMarkSaved();
+
+    boolean isUnsaved();
+
+    ChunkStatus getPersistedStatus();
+
+    ChunkStatus getHighestGeneratedStatus();
+
+    void removeBlockEntity(BlockPos pos);
+
+    void markPosForPostProcessing(BlockPos pos);
+
+    ShortList[] getPostProcessing();
+
+    void addPackedPostProcess(ShortList offsets, int index);
+
+    void setBlockEntityNbt(CompoundTag tag);
+
+    @Nullable CompoundTag getBlockEntityNbt(BlockPos pos);
+
+    @Nullable CompoundTag getBlockEntityNbtForSaving(BlockPos pos, HolderLookup.Provider provider);
+
+    void findBlocks(Predicate<BlockState> predicate, BiConsumer<BlockPos, BlockState> output);
+
+    void findBlocks(
+            Predicate<BlockState> predicate, java.util.function.BiPredicate<BlockState, BlockPos> fineFilter, BiConsumer<BlockPos, BlockState> output
+    );
+
+    TickContainerAccess<Block> getBlockTicks();
+
+    TickContainerAccess<Fluid> getFluidTicks();
+
+    boolean canBeSerialized();
+
+    ChunkAccess.PackedTicks getTicksForSerialization(long todoNameThis);
+
+    UpgradeData getUpgradeData();
+
+    boolean isOldNoiseGeneration();
+
+    @Nullable BlendingData getBlendingData();
+
+    long getInhabitedTime();
+
+    void incrementInhabitedTime();
+
+    void setInhabitedTime(long inhabitedTime);
+
+    boolean isLightCorrect();
+
+    void setLightCorrect(boolean lightCorrect);
+
+    @Deprecated
+    BiomeGenerationSettings carverBiome(Supplier<BiomeGenerationSettings> carverBiomeSettingsProvider);
+
+    void fillBiomesFromNoise(BiomeResolver resolver);
+
+    void collectBiomesInPalette(Set<Holder<Biome>> biomes);
+
+    @Nullable BelowZeroRetrogen getBelowZeroRetrogen();
+
+    boolean isUpgrading();
+
+    LevelHeightAccessor getHeightAccessorForGeneration();
+
+    void initializeLightSources();
+
+    ProblemReporter.PathElement problemPath();
+
+    // TODO static methods
+//    static ShortList getOrCreateOffsetList(ShortList[] p_62096_, int p_62097_);
+//
+//    static record PackedTicks(SerializableTickContainer<Block> blocks, SerializableTickContainer<Fluid> fluids);
+
+    // TODO forge method
+//    public @Nullable net.minecraft.world.level.LevelAccessor getWorldForge() { return null; }
+}

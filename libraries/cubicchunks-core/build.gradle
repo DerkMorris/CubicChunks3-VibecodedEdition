@@ -1,0 +1,125 @@
+import io.github.opencubicchunks.gradle.GeneratePackageInfo
+
+plugins {
+    id 'checkstyle'
+}
+
+apply plugin: "java-library"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+test {
+    // Tests are disabled because our jar contains none of the actual minecraft classes
+    // They should be run instead by the parent project after it transforms our jar
+    enabled(false)
+}
+
+// this is for dependant projects to run the tests after transforming the Core jar
+task testsJar(type: Jar) {
+    from(sourceSets.test.output)
+    from(sourceSets.main.output) {
+        include('io/github/opencubicchunks/cc_core/minecraft/**/*')
+    }
+    archiveClassifier.set("tests")
+}
+
+configurations {
+    create("testArchivesOutput") {
+        canBeConsumed = true
+        canBeResolved = false
+    }
+}
+
+artifacts {
+    add("testArchivesOutput", testsJar)
+}
+
+task generatePackageInfo {
+    setGroup('filegen')
+    doFirst {
+        GeneratePackageInfo.generateFiles(sourceSets.main)
+        GeneratePackageInfo.generateFiles(sourceSets.test)
+    }
+}
+
+jar {
+    manifest {
+        attributes(
+                "FMLModType": "GAMELIBRARY"
+        )
+    }
+}
+
+task genAll {
+    setGroup('filegen')
+    dependsOn(generatePackageInfo)
+}
+
+group = "io.github.opencubicchunks" // http://maven.apache.org/guides/mini/guide-naming-conventions.html
+
+configurations {
+    debugCompile
+    debugRuntime {
+        extendsFrom(debugCompile)
+    }
+    testCompileClasspath.extendsFrom(compileClasspath)
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        url "https://oss.sonatype.org/content/repositories/snapshots/"
+    }
+    maven {
+        url 'https://repo.spongepowered.org/maven/'
+    }
+    maven {
+        name = "ParchmentMC"
+        url = "https://maven.parchmentmc.net/"
+    }
+    maven {
+        name = "JitPack"
+        url = "https://jitpack.io"
+    }
+    maven {
+        name = "Gegy"
+        url = "https://maven.gegy.dev"
+    }
+}
+
+dependencies {
+    compileOnly 'com.github.OpenCubicChunks:javaheaders-api:3e193a8'
+
+    compileOnly group: 'com.google.guava', name: 'guava', version: '21.0'
+    compileOnly group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.17.2'
+    compileOnly group: 'io.netty', name: 'netty-all', version: '4.1.77.Final'
+    compileOnly group: 'it.unimi.dsi', name: 'fastutil', version: '8.2.3'
+
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+    compileOnly 'org.jetbrains:annotations:20.1.0'
+
+    // testing
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params:5.9.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.0'
+    testImplementation 'org.hamcrest:hamcrest-junit:2.0.0.0'
+}
+
+// ensure that the encoding is set to UTF-8, no matter what the system default is
+// this fixes some edge cases with special characters not displaying correctly
+// see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
+tasks.withType(JavaCompile) {
+    options.encoding = "UTF-8"
+}
+
+tasks.withType(Checkstyle) {
+    // Use CubicChunksCore's checkstyle config, not CubicChunks' config.
+    configFile = project.file('config/checkstyle/checkstyle.xml')
+}
+
+version = project(':cubicchunks').version
+base.archivesName = 'CubicChunksCore'

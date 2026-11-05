@@ -1,0 +1,358 @@
+diff --git a/build.gradle b/build.gradle
+index f15da1d..e6f9b67 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -8,7 +8,7 @@ apply plugin: "java-library"
+ 
+ java {
+     toolchain {
+-        languageVersion = JavaLanguageVersion.of(17)
++        languageVersion = JavaLanguageVersion.of(25)
+     }
+ }
+ 
+@@ -77,7 +77,6 @@ repositories {
+     maven {
+         url 'https://repo.spongepowered.org/maven/'
+     }
+-    jcenter()
+     maven {
+         name = "ParchmentMC"
+         url = "https://maven.parchmentmc.net/"
+@@ -120,4 +119,4 @@ tasks.withType(JavaCompile) {
+ tasks.withType(Checkstyle) {
+     // Use CubicChunksCore's checkstyle config, not CubicChunks' config.
+     configFile = project.file('config/checkstyle/checkstyle.xml')
+-}
+\ No newline at end of file
++}
+diff --git a/src/main/java/io/github/opencubicchunks/cc_core/api/CubePos.java b/src/main/java/io/github/opencubicchunks/cc_core/api/CubePos.java
+index 458596a..203c404 100644
+--- a/src/main/java/io/github/opencubicchunks/cc_core/api/CubePos.java
++++ b/src/main/java/io/github/opencubicchunks/cc_core/api/CubePos.java
+@@ -102,7 +102,7 @@ public class CubePos extends MCVec3i {
+     }
+ 
+     public static long asChunkPosLong(long cubePosIn, int localX, int localZ) {
+-        return MCChunkPos.asLong(Coords.cubeToSection(CubePos.extractX(cubePosIn), localX), Coords.cubeToSection(CubePos.extractZ(cubePosIn), localZ));
++        return MCChunkPos.pack(Coords.cubeToSection(CubePos.extractX(cubePosIn), localX), Coords.cubeToSection(CubePos.extractZ(cubePosIn), localZ));
+     }
+ 
+     public MCChunkPos asChunkPos() {
+@@ -122,7 +122,7 @@ public class CubePos extends MCVec3i {
+     }
+ 
+     public static CubePos from(MCChunkPos position, int yPos) {
+-        return new CubePos(sectionToCube(position.x), yPos, sectionToCube(position.z));
++        return new CubePos(sectionToCube(position.x()), yPos, sectionToCube(position.z()));
+     }
+ 
+     public static CubePos from(MCSectionPos sectionPos) {
+diff --git a/src/main/java/io/github/opencubicchunks/cc_core/minecraft/MCChunkPos.java b/src/main/java/io/github/opencubicchunks/cc_core/minecraft/MCChunkPos.java
+index f83d9e2..04d8640 100644
+--- a/src/main/java/io/github/opencubicchunks/cc_core/minecraft/MCChunkPos.java
++++ b/src/main/java/io/github/opencubicchunks/cc_core/minecraft/MCChunkPos.java
+@@ -4,18 +4,17 @@ import io.github.opencubicchunks.javaheaders.api.Header;
+ 
+ @Header
+ public class MCChunkPos {
+-    public final int x, z;
+     public MCChunkPos(int x, int z) {
+         throw new IllegalStateException("Per-version doesn't overwrite method");
+     }
+ 
+-    public MCChunkPos(long packedPos) {
+-        throw new IllegalStateException("Per-version doesn't overwrite method");
+-    }
++    public native int x();
++    public native int z();
+ 
+-    public native long toLong();
++    public native long pack();
++    public native static long pack(int x, int z);
+ 
+-    public native static long asLong(int x, int z);
++    public native static MCChunkPos unpack(long packedPos);
+ 
+     public native static int getX(long chunkAsLong);
+     public native static int getZ(long chunkAsLong);
+diff --git a/src/main/java/io/github/opencubicchunks/cc_core/minecraft/MCLevelHeightAccessor.java b/src/main/java/io/github/opencubicchunks/cc_core/minecraft/MCLevelHeightAccessor.java
+index 0c19784..6db730d 100644
+--- a/src/main/java/io/github/opencubicchunks/cc_core/minecraft/MCLevelHeightAccessor.java
++++ b/src/main/java/io/github/opencubicchunks/cc_core/minecraft/MCLevelHeightAccessor.java
+@@ -4,7 +4,7 @@ import io.github.opencubicchunks.javaheaders.api.Header;
+ 
+ @Header
+ public interface MCLevelHeightAccessor {
+-    int getMinBuildHeight();
++    int getMinY();
+ 
+-    int getMaxBuildHeight();
++    int getMaxY();
+ }
+diff --git a/src/main/java/io/github/opencubicchunks/cc_core/world/SpawnPlaceFinder.java b/src/main/java/io/github/opencubicchunks/cc_core/world/SpawnPlaceFinder.java
+index d3a7db0..39b77ba 100644
+--- a/src/main/java/io/github/opencubicchunks/cc_core/world/SpawnPlaceFinder.java
++++ b/src/main/java/io/github/opencubicchunks/cc_core/world/SpawnPlaceFinder.java
+@@ -104,7 +104,8 @@ public final class SpawnPlaceFinder {
+ 
+     private static MCBlockPos inWorldUp(MCLevelHeightAccessor level, MCBlockPos original, double up) {
+         int y = (int) (original.getY() + up);
+-        y = MathUtil.clamp(y, level.getMinBuildHeight(), level.getMaxBuildHeight());
++        // Minecraft 26.3 exposes inclusive minimum and maximum block Y.
++        y = MathUtil.clamp(y, level.getMinY(), level.getMaxY());
+         return new MCBlockPos(original.getX(), y, original.getZ());
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/src/main/java/io/github/opencubicchunks/cc_core/world/heightmap/surfacetrackertree/SurfaceTrackerBranch.java b/src/main/java/io/github/opencubicchunks/cc_core/world/heightmap/surfacetrackertree/SurfaceTrackerBranch.java
+index 41c0453..e944eb9 100644
+--- a/src/main/java/io/github/opencubicchunks/cc_core/world/heightmap/surfacetrackertree/SurfaceTrackerBranch.java
++++ b/src/main/java/io/github/opencubicchunks/cc_core/world/heightmap/surfacetrackertree/SurfaceTrackerBranch.java
+@@ -39,7 +39,7 @@ public class SurfaceTrackerBranch extends SurfaceTrackerNode {
+ 
+     @Override
+     protected int updateHeight(int x, int z, int idx) {
+-        synchronized(this) {
++        synchronized (this) {
+             int maxY = Integer.MIN_VALUE;
+ 
+             //Iterate though children from top to bottom finding the first with a valid position
+diff --git a/src/main/java/io/github/opencubicchunks/cc_core/world/heightmap/surfacetrackertree/SurfaceTrackerLeaf.java b/src/main/java/io/github/opencubicchunks/cc_core/world/heightmap/surfacetrackertree/SurfaceTrackerLeaf.java
+index b76a8bf..18f0275 100644
+--- a/src/main/java/io/github/opencubicchunks/cc_core/world/heightmap/surfacetrackertree/SurfaceTrackerLeaf.java
++++ b/src/main/java/io/github/opencubicchunks/cc_core/world/heightmap/surfacetrackertree/SurfaceTrackerLeaf.java
+@@ -27,7 +27,7 @@ public class SurfaceTrackerLeaf extends SurfaceTrackerNode {
+ 
+     @Override
+     protected int updateHeight(int x, int z, int idx) {
+-        synchronized(this) {
++        synchronized (this) {
+             // Node cannot be null here. If it is, the leaf was not updated on node unloading.
+             int maxY = this.source.getHighest(x, z, this.getRawType());
+ 
+diff --git a/src/main/java/io/github/opencubicchunks/cc_core/world/level/CloPos.java b/src/main/java/io/github/opencubicchunks/cc_core/world/level/CloPos.java
+index 14ef612..2e7e1a1 100644
+--- a/src/main/java/io/github/opencubicchunks/cc_core/world/level/CloPos.java
++++ b/src/main/java/io/github/opencubicchunks/cc_core/world/level/CloPos.java
+@@ -3,6 +3,8 @@ package io.github.opencubicchunks.cc_core.world.level;
+ import java.util.Objects;
+ import java.util.function.Consumer;
+ import java.util.function.LongConsumer;
++import java.util.stream.IntStream;
++import java.util.stream.Stream;
+ 
+ import io.github.opencubicchunks.cc_core.annotation.UsedFromASM;
+ import io.github.opencubicchunks.cc_core.api.CubePos;
+@@ -15,7 +17,7 @@ import io.github.opencubicchunks.cc_core.utils.Coords;
+ /**
+  * A representation of the position of either a Chunk or a Cube.
+  * <br><br>
+- * When packed as a long, chunk positions are encoded the same as {@link MCChunkPos#toLong}; cube positions are encoded the same as {@link CubePos#asLong}: packed with 21 bits per axis.
++ * When packed as a long, chunk positions are encoded the same as {@link MCChunkPos#pack}; cube positions are encoded the same as {@link CubePos#asLong}: packed with 21 bits per axis.
+  * The parity of the top two bits of the long is used to distinguish between chunks and cubes (if bit 0 XOR bit 1, it is a cube, otherwise it is a chunk).
+  * <br>
+  * Also note that for cubes the top two bits (the parity bit, and the top bit of the Z coordinate) are inverted, as otherwise {@link Long#MAX_VALUE} would be a valid position (-1, -1, -1).
+@@ -50,8 +52,8 @@ public class CloPos {
+     }
+ 
+     private CloPos(MCChunkPos columnPos) {
+-        this.x = columnPos.x;
+-        this.z = columnPos.z;
++        this.x = columnPos.x();
++        this.z = columnPos.z();
+         this.y = CLO_Y_COLUMN_INDICATOR;
+     }
+ 
+@@ -156,6 +158,54 @@ public class CloPos {
+         }
+     }
+ 
++    /**
++     * Squared distance in native units for positions of the same kind. For a cube and a column,
++     * compare their horizontal positions in cube units; a column has no vertical distance.
++     * Saturation keeps distant positions from overflowing the integer sort key.
++     */
++    public int distanceSquared(CloPos other) {
++        if (this.isCube() != other.isCube()) {
++            CloPos cube = this.isCube() ? this : other;
++            CloPos column = this.isChunk() ? this : other;
++            return saturatingDistanceSquared((long) cube.x - Coords.sectionToCube(column.x), 0,
++                    (long) cube.z - Coords.sectionToCube(column.z));
++        }
++        long dy = this.isCube() ? (long) this.y - other.y : 0;
++        return saturatingDistanceSquared((long) this.x - other.x, dy, (long) this.z - other.z);
++    }
++
++    public int distanceSquared(long other) {
++        return distanceSquared(fromLong(other));
++    }
++
++    private static int saturatingDistanceSquared(long dx, long dy, long dz) {
++        // Differences larger than sqrt(Integer.MAX_VALUE) already saturate, and checking first avoids long overflow too.
++        if (dx < -46340 || dx > 46340 || dy < -46340 || dy > 46340 || dz < -46340 || dz > 46340) {
++            return Integer.MAX_VALUE;
++        }
++        return (int) Math.min(Integer.MAX_VALUE, dx * dx + dy * dy + dz * dz);
++    }
++
++    /** Lazily enumerates the inclusive square of columns or cube of cubes around the center. */
++    public static Stream<CloPos> rangeClosed(CloPos center, int radius) {
++        if (radius < 0) {
++            throw new IllegalArgumentException("Radius must be non-negative");
++        }
++        int minX = Math.subtractExact(center.x, radius);
++        int maxX = Math.addExact(center.x, radius);
++        int minZ = Math.subtractExact(center.z, radius);
++        int maxZ = Math.addExact(center.z, radius);
++        if (center.isChunk()) {
++            return IntStream.rangeClosed(minX, maxX).boxed().flatMap(x ->
++                    IntStream.rangeClosed(minZ, maxZ).mapToObj(z -> chunk(x, z)));
++        }
++        int minY = Math.subtractExact(center.y, radius);
++        int maxY = Math.addExact(center.y, radius);
++        return IntStream.rangeClosed(minX, maxX).boxed().flatMap(x ->
++                IntStream.rangeClosed(minY, maxY).boxed().flatMap(y ->
++                        IntStream.rangeClosed(minZ, maxZ).mapToObj(z -> cube(x, y, z))));
++    }
++
+     public static long cubeAsLong(int x, int y, int z) {
+         long i = 0L;
+         i |= ((long) x & (1 << 21) - 1);
+@@ -169,7 +219,7 @@ public class CloPos {
+     }
+ 
+     public static long chunkAsLong(int x, int z) {
+-        return MCChunkPos.asLong(x, z);
++        return MCChunkPos.pack(x, z);
+     }
+ 
+     private static int extractCubeX(long packed) {
+@@ -205,7 +255,7 @@ public class CloPos {
+ 
+     public static long setX(long packed, int x) {
+         if (isChunk(packed)) {
+-            return MCChunkPos.asLong(x, MCChunkPos.getZ(packed));
++            return MCChunkPos.pack(x, MCChunkPos.getZ(packed));
+         }
+         //noinspection PointlessBitwiseExpression: yes intellij, it *is* equivalent to "-(1L << 21)" but it's also not as obvious
+         packed &= ~((1L << 21) - 1);
+@@ -222,7 +272,7 @@ public class CloPos {
+ 
+     public static long setZ(long packed, int z) {
+         if (isChunk(packed)) {
+-            return MCChunkPos.asLong(MCChunkPos.getX(packed), z);
++            return MCChunkPos.pack(MCChunkPos.getX(packed), z);
+         }
+         // mask is one bit larger (22 instead of 21) to also reset the parity bit
+         packed &= ~(((1L << 22) - 1) << 42);
+diff --git a/src/test/java/io/github/opencubicchunks/cc_core/levelgen/heightmap/SurfaceTrackerNodesTest.java b/src/test/java/io/github/opencubicchunks/cc_core/levelgen/heightmap/SurfaceTrackerNodesTest.java
+index 6745f36..cfd4332 100644
+--- a/src/test/java/io/github/opencubicchunks/cc_core/levelgen/heightmap/SurfaceTrackerNodesTest.java
++++ b/src/test/java/io/github/opencubicchunks/cc_core/levelgen/heightmap/SurfaceTrackerNodesTest.java
+@@ -498,17 +498,17 @@ public class SurfaceTrackerNodesTest {
+ 
+         LongSet requiredPositions = new LongOpenHashSet();
+         //Root will not be added if there are no leaves in the tree, so we add it here
+-        requiredPositions.add(MCChunkPos.asLong(root.getScale(), root.getScaledY()));
++        requiredPositions.add(MCChunkPos.pack(root.getScale(), root.getScaledY()));
+         //Collect all positions that are required to be loaded
+         for (SurfaceTrackerLeaf leaf : requiredLeaves) {
+             SurfaceTrackerNode node = leaf;
+             while (node != null) {
+-                requiredPositions.add(MCChunkPos.asLong(node.getScale(), node.getScaledY()));
++                requiredPositions.add(MCChunkPos.pack(node.getScale(), node.getScaledY()));
+ 
+                 if (node instanceof SurfaceTrackerBranch branch) {
+                     for (SurfaceTrackerNode child : branch.getChildren()) {
+                         if (child != null) {
+-                            requiredPositions.add(MCChunkPos.asLong(child.getScale(), child.getScaledY()));
++                            requiredPositions.add(MCChunkPos.pack(child.getScale(), child.getScaledY()));
+                         }
+                     }
+                 }
+@@ -528,7 +528,7 @@ public class SurfaceTrackerNodesTest {
+     private static void verifyAllNodesInRequiredSet(SurfaceTrackerBranch branch, LongSet requiredNodes) {
+         for (SurfaceTrackerNode child : branch.getChildren()) {
+             if (child != null) {
+-                if (!requiredNodes.contains(MCChunkPos.asLong(child.getScale(), child.getScaledY()))) {
++                if (!requiredNodes.contains(MCChunkPos.pack(child.getScale(), child.getScaledY()))) {
+                     throw new IllegalStateException("Heightmap borken");
+                 }
+ 
+diff --git a/src/test/java/io/github/opencubicchunks/cc_core/world/level/CloPosTest.java b/src/test/java/io/github/opencubicchunks/cc_core/world/level/CloPosTest.java
+index 3cb8609..280f8de 100644
+--- a/src/test/java/io/github/opencubicchunks/cc_core/world/level/CloPosTest.java
++++ b/src/test/java/io/github/opencubicchunks/cc_core/world/level/CloPosTest.java
+@@ -101,12 +101,12 @@ public class CloPosTest {
+         assertEquals(CubePos.from(cubeLong), CloPos.fromLong(cubeLong).cubePos());
+ 
+         var chunkLong = CloPos.chunkAsLong(x, z);
+-        var expectedChunkLong = MCChunkPos.asLong(x, z);
++        var expectedChunkLong = MCChunkPos.pack(x, z);
+ 
+         assertEquals(expectedChunkLong, chunkLong);
+         assertEquals(MCChunkPos.getX(chunkLong), CloPos.extractX(chunkLong));
+         assertEquals(MCChunkPos.getZ(chunkLong), CloPos.extractZ(chunkLong));
+-        assertEquals(new MCChunkPos(chunkLong), CloPos.fromLong(chunkLong).chunkPos());
++        assertEquals(MCChunkPos.unpack(chunkLong), CloPos.fromLong(chunkLong).chunkPos());
+     }
+ 
+     // offsetX/Z should be between 0 and CubicConstants.DIAMETER_IN_SECTIONS
+diff --git a/src/test/java/io/github/opencubicchunks/cc_core/minecraft/MinecraftHeaderLinkageTest.java b/src/test/java/io/github/opencubicchunks/cc_core/minecraft/MinecraftHeaderLinkageTest.java
+new file mode 100644
+index 0000000..ea3d681
+--- /dev/null
++++ b/src/test/java/io/github/opencubicchunks/cc_core/minecraft/MinecraftHeaderLinkageTest.java
+@@ -0,0 +1,50 @@
++package io.github.opencubicchunks.cc_core.minecraft;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++import io.github.opencubicchunks.cc_core.api.CubePos;
++import org.junit.jupiter.api.Test;
++
++/** These tests must run after JavaHeaders links the test JAR to the real game. */
++public class MinecraftHeaderLinkageTest {
++    @Test
++    public void cubeCoordinatesInheritTheVanillaVectorImplementation() {
++        assertEquals("net.minecraft.core.Vec3i", CubePos.class.getSuperclass().getName());
++        CubePos position = CubePos.of(-17, 32, 4096);
++        assertEquals(-17, position.getX());
++        assertEquals(32, position.getY());
++        assertEquals(4096, position.getZ());
++    }
++
++    @Test
++    public void chunkCoordinatesLinkToRecordAccessorsAndPackingMethods() {
++        assertTrue(MCChunkPos.class.isRecord());
++        MCChunkPos position = new MCChunkPos(-1875000, 1875000);
++        assertEquals(-1875000, position.x());
++        assertEquals(1875000, position.z());
++        assertEquals(position, MCChunkPos.unpack(position.pack()));
++        assertEquals(position.pack(), MCChunkPos.pack(position.x(), position.z()));
++    }
++
++    @Test
++    public void heightBoundsLinkToInclusiveVanillaCoordinates() throws ReflectiveOperationException {
++        // The header intentionally contains only the methods Core consumes.
++        // Reflection lets this test use the real game's factory after linking.
++        MCLevelHeightAccessor bounds = (MCLevelHeightAccessor) MCLevelHeightAccessor.class
++            .getMethod("create", int.class, int.class).invoke(null, -64, 384);
++        assertEquals(-64, bounds.getMinY());
++        assertEquals(319, bounds.getMaxY());
++    }
++
++    @Test
++    public void heightStorageLinksToVanillaBitStorage() {
++        assertEquals("net.minecraft.util.SimpleBitStorage", MCBitStorage.class.getName());
++        MCBitStorage storage = new MCBitStorage(6, 256);
++        storage.set(0, 63);
++        storage.set(255, 32);
++        assertEquals(63, storage.get(0));
++        assertEquals(32, storage.get(255));
++        assertEquals(0, storage.get(254));
++    }
++}

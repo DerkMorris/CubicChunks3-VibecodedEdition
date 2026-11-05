@@ -1,0 +1,36 @@
+apply plugin: 'base'
+def descriptor = new Properties()
+file('mod.properties').withInputStream { descriptor.load(it) }
+['id', 'version', 'group'].each { key ->
+    if (!descriptor.getProperty(key)?.trim()) throw new GradleException("Missing ${key} in ${project.path}/mod.properties")
+}
+if (descriptor.getProperty('id') != project.name) throw new GradleException('Mod id must match its directory under mods/')
+version = descriptor.getProperty('version')
+group = descriptor.getProperty('group')
+def modVersion = version
+def modGroup = group
+def modId = name
+subprojects {
+    apply plugin: 'java-library'
+    version = modVersion
+    group = modGroup
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(25)
+        withSourcesJar()
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = 25
+    }
+    base.archivesName = "${modId}-${name}"
+}
+tasks.register('collectJars', Sync) {
+    subprojects.findAll { it.name != 'common' }.each { loader ->
+        dependsOn "${loader.path}:assemble"
+        from(loader.layout.buildDirectory.dir('libs')) { include '*.jar' }
+    }
+    into layout.buildDirectory.dir('libs')
+}
+tasks.named('assemble') { dependsOn 'collectJars' }
+tasks.named('check') { dependsOn subprojects.collect { "${it.path}:check" } }
+tasks.named('clean') { dependsOn subprojects.collect { "${it.path}:clean" } }

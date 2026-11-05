@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "cubicchunks_test",
+  "version": "1.0.0",
+  "name": "Cubic Chunks Test Fixtures",
+  "environment": "*",
+  "license": "MIT",
+  "mixins": [
+    "cubicchunks.mixins.test.json"
+  ],
+  "depends": {
+    "cubicchunks": "*",
+    "fabricloader": ">=0.20.1",
+    "minecraft": "26.3",
+    "java": ">=25"
+  }
+}

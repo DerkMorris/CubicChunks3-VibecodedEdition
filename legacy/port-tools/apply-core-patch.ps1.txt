@@ -1,0 +1,22 @@
+$ErrorActionPreference = 'Stop'
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$coreDirectory = Join-Path $projectRoot 'CubicChunksCore'
+$patchPath = Join-Path $PSScriptRoot 'cubicchunks-core-26.3.patch'
+
+if (-not (Test-Path -LiteralPath (Join-Path $coreDirectory '.git'))) {
+    throw 'Initialize the pinned dependency first: git submodule update --init --recursive'
+}
+$revision = (& git -C $coreDirectory rev-parse HEAD).Trim()
+if ($revision -ne '75a1100c8a6d47f02bde8515d4a7de207f04be36') {
+    throw "Core is at $revision; this patch targets the pinned 75a1100 revision. No files were changed."
+}
+& git -C $coreDirectory apply --reverse --check $patchPath 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Output 'CubicChunksCore 26.3 patch is already applied.'
+    exit 0
+}
+& git -C $coreDirectory apply --check $patchPath
+if ($LASTEXITCODE -ne 0) { throw 'Core changes conflict with the patch. No files were changed.' }
+& git -C $coreDirectory apply $patchPath
+if ($LASTEXITCODE -ne 0) { throw 'Applying the Core patch failed.' }
+Write-Output 'Applied the CubicChunksCore 26.3 patch.'

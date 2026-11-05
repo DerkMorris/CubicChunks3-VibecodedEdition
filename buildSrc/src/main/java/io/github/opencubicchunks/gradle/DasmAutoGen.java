@@ -8,7 +8,7 @@ import javax.annotation.Nonnull;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
-import org.gradle.api.plugins.JavaPluginConvention;
+import org.gradle.api.plugins.JavaPluginExtension;
 
 public class DasmAutoGen implements Plugin<Project> {
 
@@ -18,7 +18,7 @@ public class DasmAutoGen implements Plugin<Project> {
         Task generateDasmConfigs = target.getTasks().create("generateDasmConfigs");
         generateDasmConfigs.setGroup("filegen");
         generateDasmConfigs.doLast(task -> {
-            JavaPluginConvention convention = Utils.getJavaPluginConvention(target);
+            JavaPluginExtension convention = Utils.getJavaPluginExtension(target);
             try {
                 dasmExtension.generateFiles(convention);
             } catch (IOException e) {

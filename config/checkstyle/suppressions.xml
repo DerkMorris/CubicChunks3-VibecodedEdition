@@ -30,9 +30,9 @@
     <suppress checks="ModifiedControlVariable" files="Int3HashSetTest.java"/>
 
     <!-- Be less strict in tests -->
-    <suppress checks="MagicNumber" files=".*src/test/.*"/>
-    <suppress checks="InnerTypeLast" files=".*src/test/.*"/>
+    <suppress checks="MagicNumber" files=".*src[/\\]test[/\\].*"/>
+    <suppress checks="InnerTypeLast" files=".*src[/\\]test[/\\].*"/>
     <!-- TODO suppressing complexity checks in tests probably still isn't ideal -->
-    <suppress checks="CyclomaticComplexity" files=".*src/test/.*"/>
-    <suppress checks="JavaNCSS" files=".*src/test/.*"/>
+    <suppress checks="CyclomaticComplexity" files=".*src[/\\]test[/\\].*"/>
+    <suppress checks="JavaNCSS" files=".*src[/\\]test[/\\].*"/>
 </suppressions>

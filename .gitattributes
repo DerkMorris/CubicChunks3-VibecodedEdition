@@ -5,3 +5,8 @@
 gradlew linguist-generated=true
 gradlew.bat linguist-generated=true
 gradle/wrapper/** linguist-generated=true
+
+*.sh text eol=lf
+gradlew text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

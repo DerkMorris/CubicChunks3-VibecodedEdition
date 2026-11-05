@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 import com.google.gson.stream.JsonWriter;
 import org.gradle.api.Action;
 import org.gradle.api.file.SourceDirectorySet;
-import org.gradle.api.plugins.JavaPluginConvention;
+import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.tasks.SourceSet;
 
 // Note: this intentionally only contains the parts that I actually use
@@ -171,7 +171,7 @@ public class MixinGenExtension {
         }
     }
 
-    void generateFiles(JavaPluginConvention convention) throws IOException {
+    void generateFiles(JavaPluginExtension convention) throws IOException {
         convention.getSourceSets().forEach(sourceSet -> {
             Map<String, Action<MixinConfig>> configs = configsBySourceSet.get(sourceSet);
             if (configs == null) {
@@ -252,7 +252,7 @@ public class MixinGenExtension {
         });
     }
 
-    private void writeMixins(JavaPluginConvention convention, SourceSet sourceSet, String name, MixinConfig config, JsonWriter writer)
+    private void writeMixins(JavaPluginExtension convention, SourceSet sourceSet, String name, MixinConfig config, JsonWriter writer)
             throws IOException {
         Set<Path> classes = getMixinClasses(config, sourceSet.getAllJava());
 
@@ -301,18 +301,15 @@ public class MixinGenExtension {
     }
 
     private Set<Path> getMixinClasses(MixinConfig config, SourceDirectorySet allJava) throws IOException {
-        System.out.println("GetMixin Classes");
         Set<Path> srcPaths = new HashSet<>();
         for (File file : allJava.getSrcDirs()) {
             Path toPath = file.getCanonicalFile().toPath();
-            System.out.println("GetMixin " + toPath);
 
             srcPaths.add(toPath);
         }
         Set<Path> classes = new HashSet<>();
         for (File it : allJava) {
             Path javaClass = it.getCanonicalFile().toPath();
-            System.out.println("Class:  " + javaClass);
             for (Path srcPath : srcPaths) {
                 if (javaClass.startsWith(srcPath)) {
                     Path relative = srcPath.relativize(javaClass);

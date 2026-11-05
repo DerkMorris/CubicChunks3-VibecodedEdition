@@ -1,0 +1,220 @@
+import io.github.opencubicchunks.gradle.FixAnnotationsFormatterStep
+import io.github.opencubicchunks.gradle.GeneratePackageInfo
+
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+    id 'com.diffplug.spotless' version '7.0.4'
+    id 'checkstyle'
+    id 'io.github.opencubicchunks.javaheaders' version '1.2.8'
+    id 'io.github.opencubicchunks.gradle.mixingen'
+    id 'io.github.opencubicchunks.gradle.dasmgen'
+}
+
+base { archivesName = 'cubicchunks-fabric' }
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+    withSourcesJar()
+}
+javaHeaders {
+    setAcceptedJars('.*CubicChunksCore.*')
+    setConfig(parent.file('javaHeaders.json'))
+}
+// Loom inspects runtime dependency metadata during configuration, before project
+// JARs can be built. Link headers only when resolving actual compile/run inputs.
+configurations.configureEach {
+    if (name.endsWith('DependencyResolve')) {
+        attributes.attribute(Attribute.of('javaHeadersLinked', Boolean), false)
+    }
+}
+sourceSets {
+    main {
+        java.srcDir '../common/src/main/java'
+        resources.srcDir '../common/src/main/resources'
+    }
+    test {
+        java.srcDir '../common/src/test/java'
+        resources.srcDir '../common/src/test/resources'
+    }
+}
+// Isolated real-client/integrated-server probe; never included in the distributed mod or JUnit fixtures.
+if (project.hasProperty('worldSmoke')) {
+    sourceSets {
+        worldSmoke {
+            java.srcDir 'world-smoke/src/main/java'
+            resources.srcDir 'world-smoke/src/main/resources'
+            compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+            runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+        }
+    }
+    configurations.worldSmokeImplementation.extendsFrom configurations.implementation
+    configurations.worldSmokeCompileOnly.extendsFrom configurations.compileOnly
+    configurations.worldSmokeRuntimeOnly.extendsFrom configurations.runtimeOnly
+}
+loom {
+    accessWidenerPath = parent.file('common/src/main/resources/cubicchunks.accesswidener')
+    mods {
+        cubicchunks { sourceSet sourceSets.main }
+        cubicchunks_test { sourceSet sourceSets.test }
+    }
+    runs {
+        client { client(); runDir rootProject.file('run/client').absolutePath }
+        server {
+            server()
+            runDir rootProject.file('run/server').absolutePath
+            programArg '--nogui'
+        }
+    }
+}
+if (project.hasProperty('worldSmoke')) {
+    loom.mods { cubicchunks_world_smoke { sourceSet sourceSets.worldSmoke } }
+    loom.runs {
+        worldSmoke {
+            client()
+            source sourceSets.worldSmoke
+            runDir rootProject.file('run/world-smoke').absolutePath
+            vmArg '-Xmx4G'
+            vmArg "-Dcubicchunks.smoke.world=${project.findProperty('smokeWorld') ?: 'cubic-entry'}"
+            vmArg "-Dcubicchunks.smoke.reopen=${project.hasProperty('smokeReopen')}"
+            vmArg "-Dcubicchunks.smoke.asyncSaves=${project.hasProperty('smokeAsyncSaves')}"
+            vmArg "-Dcubicchunks.smoke.lighting=${project.hasProperty('smokeLighting')}"
+            vmArg "-Dcubicchunks.smoke.lightHeight=${project.findProperty('smokeLightHeight') ?: '32000000'}"
+            vmArg "-Dcubicchunks.smoke.lightRender=${project.hasProperty('smokeLightRender')}"
+            vmArg "-Dcubicchunks.smoke.lightContinuity=${project.hasProperty('smokeLightContinuity')}"
+            vmArg "-Dcubicchunks.smoke.lightPrediction=${project.hasProperty('smokeLightPrediction')}"
+            vmArg "-Dcubicchunks.smoke.lightDecrease=${project.hasProperty('smokeLightDecrease')}"
+            vmArg "-Dcubicchunks.smoke.flicker=${project.hasProperty('smokeFlicker')}"
+            vmArg "-Dcubicchunks.smoke.streaming=${project.hasProperty('smokeStreaming')}"
+            vmArg "-Dcubicchunks.smoke.oreProfiles=${project.hasProperty('smokeOreProfiles')}"
+            vmArg "-Dcubicchunks.smoke.caveCurves=${project.hasProperty('smokeCaveCurves')}"
+            vmArg "-Dcubicchunks.smoke.deepCaves=${project.hasProperty('smokeDeepCaves')}"
+            vmArg "-Dcubicchunks.smoke.structures=${project.hasProperty('smokeStructures')}"
+            vmArg "-Dcubicchunks.smoke.biomes=${project.hasProperty('smokeBiomes')}"
+            vmArg "-Dcubicchunks.smoke.daylight=${project.hasProperty('smokeDaylight')}"
+            vmArg "-Dcubicchunks.smoke.mobTicks=${project.hasProperty('smokeMobTicks') || project.hasProperty('smokeMobTravel')}"
+            vmArg "-Dcubicchunks.smoke.endermanTeleport=${project.hasProperty('smokeEndermanTeleport')}"
+            vmArg "-Dcubicchunks.smoke.mobTravel=${project.hasProperty('smokeMobTravel')}"
+            vmArg "-Dcubicchunks.smoke.entityTravel=${project.hasProperty('smokeEntityTravel')}"
+            vmArg "-Dcubicchunks.smoke.ticks=${project.findProperty('smokeTicks') ?: '200'}"
+            if (project.hasProperty('smokeProfile')) {
+                vmArg "-XX:StartFlightRecording=filename=${file(project.property('smokeProfile')).absolutePath},settings=profile,dumponexit=true"
+            }
+        }
+    }
+}
+repositories {
+    mavenCentral()
+    maven { url = 'https://jitpack.io' }
+}
+configurations.testCompileOnly.extendsFrom configurations.compileOnly
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+    implementation(project(':libraries:cubicchunks-core')) {
+        attributes {
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.class, LibraryElements.JAR))
+        }
+        transitive = false
+    }
+    include project(':libraries:cubicchunks-core')
+    compileOnly 'io.github.notstirred:dasm:3.2.0:api'
+    implementation(project(':dasm:fabric')) {
+        attributes {
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.class, LibraryElements.JAR))
+        }
+    }
+    include project(':dasm:fabric')
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+    implementation 'com.electronwill.night-config:core:3.9.0'
+    implementation 'com.electronwill.night-config:toml:3.9.0'
+    include 'com.electronwill.night-config:core:3.9.0'
+    include 'com.electronwill.night-config:toml:3.9.0'
+    testImplementation 'org.assertj:assertj-core:3.25.1'
+    testImplementation "net.fabricmc:fabric-loader-junit:${loader_version}"
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params:5.10.0'
+    testImplementation 'org.mockito:mockito-core:5.24.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'org.hamcrest:hamcrest-junit:2.0.0.0'
+    testImplementation 'org.hamcrest:hamcrest:2.2'
+}
+tasks.register('generatePackageInfo') {
+    group = 'filegen'
+    doLast { sourceSets.each { GeneratePackageInfo.generateFiles(it) } }
+}
+dasmGen {
+    filePattern = '%s.dasm.json'
+    defaultMinVersion = '3.2.0'
+    config(sourceSets.main, 'cubicchunks') {
+        it.packageName = 'io.github.opencubicchunks.cubicchunks'
+    }
+}
+mixinGen {
+    filePattern = 'cubicchunks.mixins.%s.json'
+    defaultRefmap = null
+    defaultPackagePrefix = 'io.github.opencubicchunks.cubicchunks.mixin'
+    defaultCompatibilityLevel = 'JAVA_25'
+    defaultMinVersion = '0.8'
+    config(sourceSets.main, 'core') {
+        it.required = true
+        it.conformVisibility = true
+        it.injectorsDefaultRequire = 1
+        it.configurationPlugin = 'io.github.opencubicchunks.cubicchunks.mixin.ASMConfigPlugin'
+    }
+    config(sourceSets.main, 'access') {
+        it.required = true
+        it.conformVisibility = true
+        it.injectorsDefaultRequire = 1
+    }
+    config(sourceSets.test, 'test') {
+        it.required = true
+        it.conformVisibility = true
+        it.injectorsDefaultRequire = 1
+    }
+    if (project.hasProperty('worldSmoke')) {
+        config(sourceSets.worldSmoke, 'world_smoke') {
+            it.packageName = 'io.github.opencubicchunks.smoke.mixin'
+        }
+    }
+}
+tasks.register('genAll') {
+    group = 'filegen'
+    dependsOn generatePackageInfo, generateMixinConfigs, generateDasmConfigs
+}
+processResources {
+    dependsOn genAll
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+compileJava.dependsOn ':libraries:cubicchunks-core:jar'
+processTestResources.dependsOn genAll
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 25
+    options.compilerArgs += ['-Xmaxerrs', '1000']
+}
+test {
+    minHeapSize = '512M'
+    maxHeapSize = '2048M'
+    useJUnitPlatform { excludeTags 'longRunTest' }
+    jvmArgs '-ea'
+    exclude '**/mixin*'
+    testLogging.exceptionFormat = 'full'
+}
+spotless {
+    java {
+        target 'src/*/java/**/*.java', '../common/src/*/java/**/*.java'
+        eclipse().configFile(rootProject.file('config/eclipse_formatter.xml'))
+        addStep(new FixAnnotationsFormatterStep())
+        importOrder('\\#', 'java', 'javax', '')
+        removeUnusedImports()
+    }
+}
+tasks.withType(Checkstyle).configureEach { dependsOn spotlessCheck; configDirectory = rootProject.file('config/checkstyle') }
+jar { from(rootProject.file('LICENSE')) { rename { "${it}_cubicchunks" } } }
+publishing {
+    publications { mavenJava(MavenPublication) { from components.java } }
+}

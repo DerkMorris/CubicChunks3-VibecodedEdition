@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "cubicchunks",
+  "version": "${version}",
+  "name": "Cubic Chunks (experimental Fabric port)",
+  "description": "Work in progress port of Cubic Chunks 3 to Fabric 26.3.",
+  "authors": [
+    "OpenCubicChunks contributors"
+  ],
+  "contact": {
+    "sources": "https://github.com/DerkMorris/CubicChunks3-VibecodedEdition"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "accessWidener": "cubicchunks.accesswidener",
+  "entrypoints": {
+    "main": [
+      "io.github.opencubicchunks.cubicchunks.platform.fabric.CubicChunksFabric"
+    ],
+    "client": [
+      "io.github.opencubicchunks.cubicchunks.platform.fabric.CubicChunksFabricClient"
+    ]
+  },
+  "mixins": [
+    "cubicchunks.mixins.core.json",
+    "cubicchunks.mixins.access.json"
+  ],
+  "custom": {
+    "dasm": [
+      "cubicchunks.dasm.json"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": "26.3",
+    "java": ">=25",
+    "fabric-api": ">=0.165.0+26.3",
+    "dasm": ">=3.2.0"
+  }
+}

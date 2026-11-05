@@ -1,60 +1,85 @@
-# Cubic Chunks 3
+# CubicChunks3 Vibecoded Edition
 
-## Not yet usable or functional, don't try.
+[English](README.md) | [Русский](README.ru.md)
 
-Rewrite of the previous rewrite, targeting NeoForge/MC 1.21.6. 
+An experimental fork of OpenCubicChunks/CubicChunks3 for Minecraft Java Edition 26.3.
+Fabric is the currently supported platform. Code is organized by mod and loader, with shared components for future ports.
 
-This Minecraft mod extends Minecraft height and depth to be nearly infinite (at least a million blocks).
+## Project structure
 
-For the most up-to-date information about this mod and its related mods, as well as the newest downloads, please join us on the [**Cubic Chunks Discord**](https://discord.gg/kMfWg9m).
-
-### Cubic Chunks (CC) - Links:
-
-Github - [Cubic Chunks - 1.21.6 and above](https://github.com/OpenCubicChunks/CubicChunks3)  
-Github - [Cubic Chunks - 1.12.2 and lower](https://github.com/OpenCubicChunks/CubicChunks)
-
-### Cloning the repository
-
-Note: you need git installed to do the following:
-```
-git clone --recursive
-```
-You need a git submodule for the project to compile.
-If you don't yet have the submodule but already cloned the repository:
-```
-git submodule update --init --recursive
-```
-
-To get latest version of the submodule:
-```
-git submodule update --recursive --remote
-```
-
-### .git-blame-ignore-revs
-Configure commits to be ignored for git blame:
-
-```shell
-git config blame.ignoreRevsFile .git-blame-ignore-revs
+```text
+mods/
+  cubicchunks/
+    mod.properties         # mod ID, version and group
+    common/src/main/       # worlds, cubes, worldgen, lighting, entities, GUI, packets and mixins
+    common/src/test/       # shared test scenarios
+    fabric/src/main/       # entrypoints, network registration, Fabric services and metadata
+    fabric/src/test/       # Fabric integration tests
+    fabric/world-smoke/    # separate test mod for checks in the actual game client
+    forge/                 # reserved for a future port
+    neoforge/legacy/       # original NeoForge adapters preserved for future porting
+  dasm/
+    mod.properties
+    common/src/main/       # integration of DASM transformations with Mixin
+    fabric/src/main/       # configuration discovery and bootstrap through Fabric
+    fabric/src/test/       # bytecode and configuration tests
+libraries/
+  cubicchunks-core/        # vendored Core sources with fixes for 26.3
+gradle/                     # shared build rules
+buildSrc/                   # Mixin/DASM configuration generators and Java headers
+tools/                      # additional verification tools
+legacy/                     # historical sources excluded from the build
+docs/port-history.md        # details of earlier porting milestones
 ```
 
-### Contributing
+Gradle currently includes `common` and `fabric`. The Forge and NeoForge directories describe future work.
+To add a loader, provide its `build.gradle`, entrypoints, metadata and service implementations.
+The `checkLoaderIndependence` check prevents loader API references in shared production code.
 
-#### PR Guidelines
-- All mixin methods and fields _**must**_ have a `cc_` prefix, except for those in test mixins. // todo automate this check in gh workflows.
-- If a class is significantly modified with mixins, it _**must**_ have documentation explaining:
-	- The original vanilla behaviour, can mention important fields/methods.
-		- If the vanilla class has sufficient javadoc (through parchment), this can be skipped. Our javadoc should link to the parchment javadoc.
-	- The goal of all mixins targeting the class.
-- Any merged mixins _**must**_ have tests associated with them. 
-	- If a mixin is "untestable" its test class should have a comment explaining *why* it's untestable. 
-		- Optionally a to-do (project task? issue?) suggesting integration tests when possible.
-	- All non-trivial mixins _**must**_ have a comment explaining their purpose.
-	-  //todo Investigate code coverage for mixin tests ([jacoco?](https://docs.gradle.org/current/userguide/jacoco_plugin.html) [other link maybe it's bad](https://igorski.co/generating-junit-test-coverage-using-gradle-and-jacoco/)) .
-- Any non-mixin class _**must**_ have tests associated with it.
-	- The tests should reasonably cover all expected usage of the class (its external api).
-	- Any method(s) that can be reasonably unit tested _**must**_ be.
-- Anything annotated with `@SuppressWarnings` _**must**_ have either a TODO comment, or a comment explaining why the warning is suppressed.
-- _**Must**_ pass spotless check and checkstyle. Spotless formats automatically if you run `./gradlew spotlessApply`; checkstyle violations must be fixed manually.
-- _**Must**_ build.
-- All tests _**must**_ pass (no regressions).
-(TODO more contributing docs)
+Shared Minecraft code is compiled independently. Loom provides Minecraft and access to its classes during the build.
+The `Platform` and `ClientPlatform` services are provided through Java ServiceLoader.
+Client handlers are registered only by the client entrypoint.
+Game code tests from both directories run through Fabric Loader in the `:cubicchunks:fabric:test` task.
+
+## Building
+
+JDK 25 and access to dependency repositories are required for the first build.
+The Gradle Wrapper is included. No Git submodules are required to build the project.
+
+| Windows command | Result |
+| --- | --- |
+| `.\dev.cmd listMods` | List mods, versions and configured loaders |
+| `.\dev.cmd build` | Build and check all configured modules |
+| `.\dev.cmd :cubicchunks:fabric:build` | Build CubicChunks for Fabric |
+| `.\dev.cmd :dasm:fabric:build` | Build the DASM adapter for Fabric |
+| `.\dev.cmd runClient` | Launch a separate development client |
+| `.\dev.cmd :cubicchunks:fabric:runServer` | Launch a development server |
+| `.\dev.cmd spotlessApply` | Format CubicChunks code |
+
+On Linux/macOS, use `./gradlew` with the same tasks.
+Built JARs for all mods are collected in the root `build/libs`; individual mod builds are in `mods/<id>/build/libs`.
+Files named `*-sources.jar` contain source code.
+The main CubicChunks JAR includes the DASM adapter, Core and configuration libraries.
+The game client requires Fabric API for Minecraft 26.3. A normal installation needs the main CubicChunks JAR and Fabric API.
+
+Mod versions are defined in `mods/<id>/mod.properties`; tool and Minecraft versions are defined in the root `gradle.properties`.
+The `cubicchunks` mod ID, save format and network packet IDs have been preserved.
+
+## In-game checks
+
+```powershell
+.\dev.cmd -PworldSmoke -PsmokeDeepCaves -PsmokeCaveCurves -PsmokeOreProfiles -PsmokeWorld=layout-check runWorldSmoke
+.\dev.cmd -PworldSmoke -PsmokeDeepCaves -PsmokeCaveCurves -PsmokeOreProfiles -PsmokeWorld=layout-check -PsmokeReopen runWorldSmoke
+```
+
+The first run creates a separate world through the game menus and checks world generation, ores and synchronization.
+The second checks the saved world. Files are stored in `run/world-smoke`.
+The test mod is excluded from distributed JARs.
+Other scenarios are described in `tools/verify/README.md`.
+
+## Credits and license
+
+This project is based on [OpenCubicChunks/CubicChunks3](https://github.com/OpenCubicChunks/CubicChunks3).
+Core is based on [OpenCubicChunks/CubicChunksCore](https://github.com/OpenCubicChunks/CubicChunksCore) and is vendored with the port's changes.
+DASM uses NotStirred's 3.2.0 core and adapted dasm-mod sources. Attribution and license details are in `mods/dasm/NOTICE.txt`.
+This project is licensed under MIT; see `LICENSE`.

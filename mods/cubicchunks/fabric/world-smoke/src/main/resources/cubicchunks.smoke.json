@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "io.github.opencubicchunks.smoke.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "ShutdownProbe"
+  ],
+  "client": [
+    "ClientLightQueueProbe",
+    "InitialCubeLightProbe"
+  ]
+}

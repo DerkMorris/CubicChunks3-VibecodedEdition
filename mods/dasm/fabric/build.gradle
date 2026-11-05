@@ -1,0 +1,64 @@
+plugins {
+    id 'java-library'
+}
+
+base.archivesName = 'dasm-fabric'
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.fabricmc.net/' }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+}
+
+configurations {
+    bundledDasm
+    implementation.extendsFrom bundledDasm
+    testImplementation.extendsFrom compileOnly
+}
+
+dependencies {
+    bundledDasm('io.github.notstirred:dasm:3.2.0') { transitive = false }
+    compileOnly 'net.fabricmc:fabric-loader:0.20.1'
+    compileOnly 'net.fabricmc:sponge-mixin:0.17.4+mixin.0.8.7'
+    compileOnly 'org.ow2.asm:asm:9.9.1'
+    compileOnly 'org.ow2.asm:asm-tree:9.9.1'
+    compileOnly 'org.ow2.asm:asm-commons:9.9.1'
+    compileOnly 'com.google.code.gson:gson:2.13.2'
+    compileOnly 'org.apache.logging.log4j:log4j-api:2.25.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.4'
+    testRuntimeOnly 'io.github.notstirred:dasm:3.2.0'
+    // Keep the implementation aligned with the API used by the adapter. DASM's
+    // transitive 2.22.1 core calls internals removed from newer log4j-api.
+    testRuntimeOnly 'org.apache.logging.log4j:log4j-core:2.25.1'
+    testRuntimeOnly 'org.ow2.asm:asm-util:9.9.1'
+    testRuntimeOnly 'org.ow2.asm:asm-analysis:9.9.1'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    // No mixin refmap is needed for the unobfuscated Minecraft 26.3 target.
+    options.compilerArgs += ['-proc:none']
+}
+
+tasks.named('jar', Jar) {
+    from({ configurations.bundledDasm.collect { zipTree(it) } }) {
+        exclude 'META-INF/MANIFEST.MF'
+    }
+    from(parent.file('NOTICE.txt'))
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+
+sourceSets.main.java.srcDir '../common/src/main/java'

@@ -1,13 +1,25 @@
 pluginManagement {
     repositories {
-        mavenLocal()
+        maven { url = 'https://maven.fabricmc.net/' }
         gradlePluginPortal()
         maven { url = 'https://maven.neoforged.net/releases' }
-        maven { url = "https://jitpack.io" }
+        maven { url = 'https://jitpack.io' }
     }
 }
-
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
 }
-include ':CubicChunksCore'
+rootProject.name = 'CubicChunks3-VibecodedEdition'
+file('mods').listFiles().findAll { new File(it, 'mod.properties').isFile() }.sort { it.name }.each { mod ->
+    include ":${mod.name}"
+    project(":${mod.name}").projectDir = mod
+    ['common', 'fabric', 'forge', 'neoforge'].each { loader ->
+        def folder = new File(mod, loader)
+        if (new File(folder, 'build.gradle').isFile()) {
+            include ":${mod.name}:${loader}"
+            project(":${mod.name}:${loader}").projectDir = folder
+        }
+    }
+}
+include ':libraries:cubicchunks-core'
+project(':libraries:cubicchunks-core').projectDir = file('libraries/cubicchunks-core')

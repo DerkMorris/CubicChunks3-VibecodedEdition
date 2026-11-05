@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "dasm",
+  "version": "${version}",
+  "name": "DASM (CubicChunks Fabric adapter)",
+  "description": "Experimental runtime adapter for declarative bytecode transforms on unobfuscated Minecraft.",
+  "authors": ["NotStirred", "CubicChunks Fabric port contributors"],
+  "license": "MIT",
+  "environment": "*",
+  "mixins": ["dasm-mod.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": "26.3",
+    "java": ">=25"
+  }
+}
