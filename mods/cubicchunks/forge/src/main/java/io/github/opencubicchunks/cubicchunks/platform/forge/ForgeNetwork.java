@@ -35,6 +35,8 @@ final class ForgeNetwork {
                 (packet, context) -> clientHandler.accept(packet));
         toClient.addMain(CCClientboundCubeLightRevokePacket.TYPE, CCClientboundCubeLightRevokePacket.STREAM_CODEC.cast(),
                 (packet, context) -> clientHandler.accept(packet));
+        toClient.addMain(CCClientboundWeatherColumnPacket.TYPE, CCClientboundWeatherColumnPacket.STREAM_CODEC.cast(),
+                (packet, context) -> clientHandler.accept(packet));
         toClient.addMain(CCClientboundCubeBlockChangesPacket.TYPE, CCClientboundCubeBlockChangesPacket.STREAM_CODEC.cast(),
                 (packet, context) -> clientHandler.accept(packet));
         toClient.addMain(CCClientboundCubeOpenSignEditorPacket.TYPE, CCClientboundCubeOpenSignEditorPacket.STREAM_CODEC.cast(),

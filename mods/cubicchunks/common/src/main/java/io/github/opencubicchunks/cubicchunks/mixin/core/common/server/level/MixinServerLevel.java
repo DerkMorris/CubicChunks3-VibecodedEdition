@@ -20,6 +20,7 @@ import io.github.opencubicchunks.cubicchunks.mixin.core.common.world.level.Mixin
 import io.github.opencubicchunks.cubicchunks.mixin.dasmsets.ChunkToCloSet;
 import io.github.opencubicchunks.cubicchunks.mixin.dasmsets.ChunkToCubeSet;
 import io.github.opencubicchunks.cubicchunks.server.level.CubeRandomTicks;
+import io.github.opencubicchunks.cubicchunks.server.level.CubeWeatherTicks;
 import io.github.opencubicchunks.cubicchunks.server.level.CubicServerLevel;
 import io.github.opencubicchunks.cubicchunks.server.level.ServerCubeCache;
 import io.github.opencubicchunks.cubicchunks.world.level.chunklike.LevelClo;
@@ -62,6 +63,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Dasm(value = ChunkToCloSet.class, target = @Ref(ServerLevel.class))
 @Mixin(ServerLevel.class)
 public abstract class MixinServerLevel extends MixinLevel implements CubicServerLevel {
+    @Unique
+    private CubeWeatherTicks cc_weatherTicks;
     @Unique
     private NativeBiomeTerrain cc_nativeTerrain;
 
@@ -199,6 +202,10 @@ public abstract class MixinServerLevel extends MixinLevel implements CubicServer
 
     @AddMethodToSets(containers = ChunkToCubeSet.ServerLevel_redirects.class, method = "tickChunk(Lnet/minecraft/world/level/chunk/LevelChunk;I)V")
     public void cc_tickCube(LevelCube levelCube, int randomTickSpeed) {
+        if (cc_weatherTicks == null) {
+            cc_weatherTicks = new CubeWeatherTicks();
+        }
+        cc_weatherTicks.tick((ServerLevel) (Object) this, levelCube, randomTickSpeed);
         CubeRandomTicks.tick((ServerLevel) (Object) this, levelCube, randomTickSpeed);
     }
 

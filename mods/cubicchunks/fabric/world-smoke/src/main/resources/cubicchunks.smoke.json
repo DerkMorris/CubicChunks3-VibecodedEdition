@@ -6,6 +6,7 @@
     "ShutdownProbe"
   ],
   "client": [
+    "LoopbackLanProbe",
     "ClientLightQueueProbe",
     "InitialCubeLightProbe"
   ]

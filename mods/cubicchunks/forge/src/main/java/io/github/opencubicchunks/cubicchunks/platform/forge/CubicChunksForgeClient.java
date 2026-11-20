@@ -52,6 +52,8 @@ public final class CubicChunksForgeClient {
             new CCClientboundCubeLightInvalidatePacket.Handler().receive(packet, context);
         else if (payload instanceof CCClientboundCubeLightRevokePacket packet)
             new CCClientboundCubeLightRevokePacket.Handler().receive(packet, context);
+        else if (payload instanceof CCClientboundWeatherColumnPacket packet)
+            new CCClientboundWeatherColumnPacket.Handler().receive(packet, context);
         else if (payload instanceof CCClientboundCubeBlockChangesPacket packet)
             new CCClientboundCubeBlockChangesPacket.Handler().receive(packet, context);
         else if (payload instanceof CCClientboundCubeOpenSignEditorPacket packet)

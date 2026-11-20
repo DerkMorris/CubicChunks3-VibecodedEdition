@@ -109,6 +109,10 @@ public final class SerializableCubeData {
         return io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeLightBlockSnapshot.capture(sectionSnapshot(palettes));
     }
 
+    public io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnBlocks columnBlocks(PalettedContainerFactory palettes) {
+        return new io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnBlocks(pos, readSections(palettes));
+    }
+
     private ProtoCube sectionSnapshot(PalettedContainerFactory palettes) {
         return new ProtoCube(pos, UpgradeData.EMPTY, readSections(palettes), new ProtoChunkTicks<>(), new ProtoChunkTicks<>(),
                 LevelHeightAccessor.create(pos.minCubeY(), CubicConstants.DIAMETER_IN_BLOCKS), palettes, null);

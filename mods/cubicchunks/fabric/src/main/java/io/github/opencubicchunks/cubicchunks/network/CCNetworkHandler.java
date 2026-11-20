@@ -23,6 +23,7 @@ public class CCNetworkHandler {
         registrar.register(CCClientboundLevelCubeWithLightPacket.TYPE, CCClientboundLevelCubeWithLightPacket.STREAM_CODEC);
         registrar.register(CCClientboundCubeLightInvalidatePacket.TYPE, CCClientboundCubeLightInvalidatePacket.STREAM_CODEC);
         registrar.register(CCClientboundCubeLightRevokePacket.TYPE, CCClientboundCubeLightRevokePacket.STREAM_CODEC);
+        registrar.register(CCClientboundWeatherColumnPacket.TYPE, CCClientboundWeatherColumnPacket.STREAM_CODEC);
         registrar.register(CCClientboundCubeBlockChangesPacket.TYPE, CCClientboundCubeBlockChangesPacket.STREAM_CODEC);
         registrar.register(CCClientboundCubeOpenSignEditorPacket.TYPE, CCClientboundCubeOpenSignEditorPacket.STREAM_CODEC);
         registrar.register(CCClientboundCubeBlockEntityDataPacket.TYPE, CCClientboundCubeBlockEntityDataPacket.STREAM_CODEC);

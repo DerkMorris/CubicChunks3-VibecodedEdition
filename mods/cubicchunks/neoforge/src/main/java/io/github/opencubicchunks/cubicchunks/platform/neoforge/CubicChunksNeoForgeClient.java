@@ -48,6 +48,8 @@ public final class CubicChunksNeoForgeClient {
                 .receive(packet, new ClientPacketContext(Minecraft.getInstance(), Minecraft.getInstance().player)));
         event.register(CCClientboundCubeLightRevokePacket.TYPE, (packet, context) -> new CCClientboundCubeLightRevokePacket.Handler().receive(packet,
                 new ClientPacketContext(Minecraft.getInstance(), Minecraft.getInstance().player)));
+        event.register(CCClientboundWeatherColumnPacket.TYPE, (packet, context) -> new CCClientboundWeatherColumnPacket.Handler().receive(packet,
+                new ClientPacketContext(Minecraft.getInstance(), Minecraft.getInstance().player)));
         event.register(CCClientboundCubeBlockChangesPacket.TYPE, (packet, context) -> new CCClientboundCubeBlockChangesPacket.Handler()
                 .receive(packet, new ClientPacketContext(Minecraft.getInstance(), Minecraft.getInstance().player)));
         event.register(CCClientboundCubeOpenSignEditorPacket.TYPE, (packet, context) -> new CCClientboundCubeOpenSignEditorPacket.Handler()

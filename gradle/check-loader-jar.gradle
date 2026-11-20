@@ -20,6 +20,10 @@ tasks.register('checkLoaderJar') {
                 if (jarFile.getJarEntry(it) != null) throw new GradleException("Foreign loader metadata: ${it}")
             }
             if (modId == 'cubicchunks') {
+                if (jarFile.getJarEntry('cubicchunks.smoke.json') != null
+                        || jarFile.entries().any { it.name.startsWith('io/github/opencubicchunks/smoke/') }) {
+                    throw new GradleException('World/dedicated verification probes must not be included in release artifacts')
+                }
                 if (jarFile.getJarEntry('io/github/opencubicchunks/cubicchunks/mixin/core/client/LoaderSmokeProbe.class') != null) {
                     throw new GradleException('Development probe present: rebuild without -PloaderSmoke before distributing')
                 }

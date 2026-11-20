@@ -24,11 +24,20 @@ public abstract class MixinSynchedEntityDataValue {
                 new SynchedEntityData.DataValue<>(data.id(), CubeEntityDataSerializers.OPTIONAL_POSITION, value).write(buffer);
                 ci.cancel();
             }
+        } else if (data.serializer() == EntityDataSerializers.BLOCK_POS) {
+            var value = (BlockPos) data.value();
+            if (!BlockPos.of(value.asLong()).equals(value)) {
+                new SynchedEntityData.DataValue<>(data.id(), CubeEntityDataSerializers.POSITION, value).write(buffer);
+                ci.cancel();
+            }
         }
     }
 
     @ModifyReturnValue(method = "read(Lnet/minecraft/network/RegistryFriendlyByteBuf;I)Lnet/minecraft/network/syncher/SynchedEntityData$DataValue;", at = @At("RETURN"))
     private static SynchedEntityData.DataValue<?> cc_restoreNativeAccessor(SynchedEntityData.DataValue<?> value) {
+        if (value.serializer() == CubeEntityDataSerializers.POSITION) {
+            return new SynchedEntityData.DataValue<>(value.id(), EntityDataSerializers.BLOCK_POS, (BlockPos) value.value());
+        }
         return value.serializer() == CubeEntityDataSerializers.OPTIONAL_POSITION
                 ? new SynchedEntityData.DataValue<>(value.id(), EntityDataSerializers.OPTIONAL_BLOCK_POS, (Optional<BlockPos>) value.value())
                 : value;

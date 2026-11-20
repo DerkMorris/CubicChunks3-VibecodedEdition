@@ -23,6 +23,7 @@ final class NeoForgeNetwork {
         registrar.playToClient(CCClientboundLevelCubeWithLightPacket.TYPE, CCClientboundLevelCubeWithLightPacket.STREAM_CODEC);
         registrar.playToClient(CCClientboundCubeLightInvalidatePacket.TYPE, CCClientboundCubeLightInvalidatePacket.STREAM_CODEC);
         registrar.playToClient(CCClientboundCubeLightRevokePacket.TYPE, CCClientboundCubeLightRevokePacket.STREAM_CODEC);
+        registrar.playToClient(CCClientboundWeatherColumnPacket.TYPE, CCClientboundWeatherColumnPacket.STREAM_CODEC);
         registrar.playToClient(CCClientboundCubeBlockChangesPacket.TYPE, CCClientboundCubeBlockChangesPacket.STREAM_CODEC);
         registrar.playToClient(CCClientboundCubeOpenSignEditorPacket.TYPE, CCClientboundCubeOpenSignEditorPacket.STREAM_CODEC);
         registrar.playToClient(CCClientboundCubeBlockEntityDataPacket.TYPE, CCClientboundCubeBlockEntityDataPacket.STREAM_CODEC);

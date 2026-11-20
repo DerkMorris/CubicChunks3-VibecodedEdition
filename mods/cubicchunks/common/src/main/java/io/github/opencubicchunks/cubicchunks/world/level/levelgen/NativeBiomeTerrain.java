@@ -231,4 +231,18 @@ public final class NativeBiomeTerrain {
             return result;
         }, net.minecraft.util.Util.backgroundExecutor());
     }
+
+    /** Detached paletted native surface band for sparse gameplay column queries. No world cubes are loaded. */
+    public CompletableFuture<Map<Integer, io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnBlocks>> columnBlocks(
+            CubePos column
+    ) {
+        return tile(column).thenApplyAsync(columns -> {
+            Map<Integer, io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnBlocks> result = new HashMap<>();
+            for (int y = Coords.blockToCube(level.getMinY()); y <= Coords.blockToCube(level.getMaxY()); y++) {
+                CubePos pos = CubePos.of(column.getX(), y, column.getZ());
+                result.put(y, new io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnBlocks(pos, sections(columns, pos)));
+            }
+            return result;
+        }, net.minecraft.util.Util.backgroundExecutor());
+    }
 }

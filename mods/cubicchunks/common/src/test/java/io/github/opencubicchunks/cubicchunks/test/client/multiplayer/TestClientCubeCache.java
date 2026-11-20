@@ -4,7 +4,9 @@ import static io.github.opencubicchunks.cc_core.utils.Coords.cubeToSection;
 import static io.github.opencubicchunks.cubicchunks.testutils.Misc.assertDeepEquals;
 import static io.github.opencubicchunks.cubicchunks.testutils.Misc.generateRandomLevelCube;
 import static io.github.opencubicchunks.cubicchunks.testutils.Misc.mockLevelWithPalettes;
+import static io.github.opencubicchunks.cubicchunks.testutils.Misc.setupLevelHeight;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
@@ -148,70 +150,62 @@ public class TestClientCubeCache extends BaseTest {
     }
 
     /**
-     * Test that if a cube position is within the range of storage, then all adjacent chunk positions are also in range
+     * Every column intersecting a visible cube must fit the native column cache, including both horizontal borders after resizing.
      */
     @Test
-    @Disabled // TODO disabled until we can apply client-side mixins in tests properly
     public void testCubeRangeContainedWithinChunkRange() {
         ClientLevel clientLevelMock = mockLevelWithPalettes(ClientLevel.class);
         when(((CanBeCubic) clientLevelMock).cc_isCubic()).thenReturn(true);
-        when(clientLevelMock.getHeight()).thenReturn(384);
-        when(clientLevelMock.getSectionsCount()).thenReturn(24);
-        var clientChunkCache = ((ClientCubeCache) new ClientChunkCache(clientLevelMock, 5));
-        int centerX = 77;
-        int centerZ = -33;
-        clientChunkCache.cc_updateViewCenter(centerX, 0, centerZ);
-        var cubeStorage = ((ClientChunkCacheTestAccess) clientChunkCache).cubeStorage();
-        var chunkStorage = ((ClientChunkCacheTestAccess) clientChunkCache).chunkStorage();
-        for (int dx = -10; dx <= 10; dx++) {
-            for (int dz = -10; dz <= 10; dz++) {
-                if (cubeStorage.inRange(centerX + dx, 0, centerZ + dz)) {
+        setupLevelHeight(clientLevelMock, -64, 384);
+        ClientChunkCache nativeCache = new ClientChunkCache(clientLevelMock, 5);
+        when(clientLevelMock.getChunkSource()).thenReturn(nativeCache);
+        ClientCubeCache cubeCache = (ClientCubeCache) nativeCache;
+        assertCubeColumnsInRange(nativeCache, CubePos.ZERO);
+
+        // -1 retains the current radius: exercise center-only moves as well as growth, shrinkage, and the native minimum-radius rule.
+        int[][] transitions = { { 77, 1000, -33, -1 }, { -123, -1000, 0, 7 }, { 0, 1000000, 300, -1 }, { -77, -1000000, 33, 2 }, { 1, 0, -1, 0 },
+            { -1, 0, 1, 1 }, { 77, 0, -33, 5 } };
+        for (int[] transition : transitions) {
+            CubePos center = CubePos.of(transition[0], transition[1], transition[2]);
+            cubeCache.cc_updateViewCenter(center.getX(), center.getY(), center.getZ());
+            assertCubeColumnsInRange(nativeCache, center);
+            if (transition[3] >= 0) {
+                cubeCache.cc_updateViewRadius(transition[3]);
+                assertCubeColumnsInRange(nativeCache, center);
+            }
+        }
+    }
+
+    private static void assertCubeColumnsInRange(ClientChunkCache nativeCache, CubePos center) {
+        var access = (ClientChunkCacheTestAccess) nativeCache;
+        var cubes = access.cubeStorage();
+        var columns = (ClientChunkCache$StorageTestAccess) (Object) access.chunkStorage();
+        int radius = cubes.cubeRadius;
+        assertTrue(radius > 0, "The native storage rule must produce a nonempty cube range");
+        assertEquals(center.getX(), cubes.viewCenterX);
+        assertEquals(center.getY(), cubes.viewCenterY);
+        assertEquals(center.getZ(), cubes.viewCenterZ);
+        int visited = 0;
+        for (int dx = -radius - 1; dx <= radius + 1; dx++) {
+            for (int dz = -radius - 1; dz <= radius + 1; dz++) {
+                int x = center.getX() + dx;
+                int z = center.getZ() + dz;
+                boolean inRange = cubes.inRange(x, center.getY(), z);
+                assertEquals(Math.abs(dx) <= radius && Math.abs(dz) <= radius, inRange,
+                        "Cube border around " + center + " at offset " + dx + "," + dz);
+                if (inRange) {
+                    visited++;
                     for (int sectionX = 0; sectionX < CubicConstants.DIAMETER_IN_SECTIONS; sectionX++) {
                         for (int sectionZ = 0; sectionZ < CubicConstants.DIAMETER_IN_SECTIONS; sectionZ++) {
-                            var isInRange = ((ClientChunkCache$StorageTestAccess) (Object) chunkStorage)
-                                    .invokeInRange(cubeToSection(centerX + dx, sectionX), cubeToSection(centerZ + dz, sectionZ));
-                            assertTrue(isInRange);
+                            int columnX = cubeToSection(x, sectionX);
+                            int columnZ = cubeToSection(z, sectionZ);
+                            assertTrue(columns.invokeInRange(columnX, columnZ),
+                                    "Visible cube column " + columnX + "," + columnZ + " escaped native range around " + center);
                         }
                     }
                 }
             }
         }
-        // Test re-centering and updating view radius
-        centerX = -123;
-        centerZ = 0;
-        clientChunkCache.cc_updateViewCenter(centerX, 0, centerZ);
-        clientChunkCache.cc_updateViewRadius(7);
-        cubeStorage = ((ClientChunkCacheTestAccess) clientChunkCache).cubeStorage();
-        chunkStorage = ((ClientChunkCacheTestAccess) clientChunkCache).chunkStorage();
-        for (int dx = -12; dx <= 12; dx++) {
-            for (int dz = -12; dz <= 12; dz++) {
-                if (cubeStorage.inRange(centerX + dx, 0, centerZ + dz)) {
-                    for (int sectionX = 0; sectionX < CubicConstants.DIAMETER_IN_SECTIONS; sectionX++) {
-                        for (int sectionZ = 0; sectionZ < CubicConstants.DIAMETER_IN_SECTIONS; sectionZ++) {
-                            assertTrue(((ClientChunkCache$StorageTestAccess) (Object) chunkStorage)
-                                    .invokeInRange(cubeToSection(centerX + dx, sectionX), cubeToSection(centerZ + dz, sectionZ)));
-                        }
-                    }
-                }
-            }
-        }
-        // Test re-centering without updating view radius after
-        centerX = 0;
-        centerZ = 300;
-        clientChunkCache.cc_updateViewCenter(centerX, 0, centerZ);
-        cubeStorage = ((ClientChunkCacheTestAccess) clientChunkCache).cubeStorage();
-        chunkStorage = ((ClientChunkCacheTestAccess) clientChunkCache).chunkStorage();
-        for (int dx = -12; dx <= 12; dx++) {
-            for (int dz = -12; dz <= 12; dz++) {
-                if (cubeStorage.inRange(centerX + dx, 0, centerZ + dz)) {
-                    for (int sectionX = 0; sectionX < CubicConstants.DIAMETER_IN_SECTIONS; sectionX++) {
-                        for (int sectionZ = 0; sectionZ < CubicConstants.DIAMETER_IN_SECTIONS; sectionZ++) {
-                            assertTrue(((ClientChunkCache$StorageTestAccess) (Object) chunkStorage)
-                                    .invokeInRange(cubeToSection(centerX + dx, sectionX), cubeToSection(centerZ + dz, sectionZ)));
-                        }
-                    }
-                }
-            }
-        }
+        assertEquals((radius * 2 + 1) * (radius * 2 + 1), visited, "The sweep must visit every in-range cube, including corners");
     }
 }

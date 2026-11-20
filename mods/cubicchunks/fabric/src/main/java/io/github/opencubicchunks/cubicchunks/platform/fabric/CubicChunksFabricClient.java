@@ -13,6 +13,7 @@ import io.github.opencubicchunks.cubicchunks.network.CCClientboundForgetLevelClo
 import io.github.opencubicchunks.cubicchunks.network.CCClientboundLevelChunkPacket;
 import io.github.opencubicchunks.cubicchunks.network.CCClientboundLevelCubeWithLightPacket;
 import io.github.opencubicchunks.cubicchunks.network.CCClientboundSetCubeCacheCenterPacket;
+import io.github.opencubicchunks.cubicchunks.network.CCClientboundWeatherColumnPacket;
 import io.github.opencubicchunks.cubicchunks.network.CCServerboundCubeLightRefreshPacket;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
@@ -56,6 +57,9 @@ public final class CubicChunksFabricClient implements ClientModInitializer {
                         new io.github.opencubicchunks.cubicchunks.platform.ClientPacketContext(context.client(), context.player())));
         ClientPlayNetworking.registerGlobalReceiver(CCClientboundCubeLightRevokePacket.TYPE,
                 (packet, context) -> new CCClientboundCubeLightRevokePacket.Handler().receive(packet,
+                        new io.github.opencubicchunks.cubicchunks.platform.ClientPacketContext(context.client(), context.player())));
+        ClientPlayNetworking.registerGlobalReceiver(CCClientboundWeatherColumnPacket.TYPE,
+                (packet, context) -> new CCClientboundWeatherColumnPacket.Handler().receive(packet,
                         new io.github.opencubicchunks.cubicchunks.platform.ClientPacketContext(context.client(), context.player())));
         ClientPlayNetworking.registerGlobalReceiver(CCClientboundLevelChunkPacket.TYPE,
                 (packet, context) -> new CCClientboundLevelChunkPacket.Handler().receive(packet,

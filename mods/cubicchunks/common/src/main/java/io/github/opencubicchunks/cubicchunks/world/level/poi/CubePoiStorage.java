@@ -133,6 +133,53 @@ public final class CubePoiStorage implements AutoCloseable {
         return records.stream();
     }
 
+    /** Portal searches retain vanilla's horizontal radius and compare every known height, including unloaded portal POI. */
+    public Stream<PoiRecord> portalsInHorizontalSquare(BlockPos center, int radius) {
+        check();
+        CubicBlockBounds.requireValid(center);
+        if (radius < 0) {
+            throw new IllegalArgumentException("Negative portal radius");
+        }
+        CubePos min = clipped(center, -(long) radius);
+        CubePos max = clipped(center, radius);
+        if ((long) (max.getX() - min.getX() + 1) * (max.getZ() - min.getZ() + 1) > MAX_QUERY_CUBES) {
+            throw new IllegalArgumentException("Portal query exceeds the column scan budget");
+        }
+        // One ordered I/O operation observes preceding saves across all requested columns, without scanning empty Y coordinates.
+        var saved = store().readHorizontalArea(min.getX(), max.getX(), min.getZ(), max.getZ()).join();
+        Map<CubePos, PoiSection[]> candidates = portalCandidates(saved, min, max);
+        if (candidates.size() > MAX_QUERY_CUBES) {
+            throw new IllegalStateException("Portal query exceeds the aggregate cube scan budget");
+        }
+        List<PoiRecord> result = new ArrayList<>();
+        for (PoiSection[] sections : candidates.values()) {
+            for (PoiSection section : sections) {
+                section.getRecords(type -> type.is(PoiTypes.NETHER_PORTAL), PoiManager.Occupancy.ANY)
+                        .filter(record -> Math.abs((long) record.getPos().getX() - center.getX()) <= radius
+                                && Math.abs((long) record.getPos().getZ() - center.getZ()) <= radius)
+                        .forEach(result::add);
+            }
+        }
+        return result.stream();
+    }
+
+    private Map<CubePos, PoiSection[]> portalCandidates(Map<CubePos, net.minecraft.nbt.CompoundTag> saved, CubePos min, CubePos max) {
+        Map<CubePos, PoiSection[]> candidates = new LinkedHashMap<>();
+        for (var entry : saved.entrySet()) {
+            if (!cubes.containsKey(entry.getKey())) {
+                var packed = CubePoiData.load(registries, entry.getKey(), entry.getValue());
+                candidates.put(entry.getKey(), packed.stream().map(section -> section.unpack(() -> {})).toArray(PoiSection[]::new));
+            }
+        }
+        for (var entry : cubes.entrySet()) {
+            CubePos pos = entry.getKey();
+            if (pos.getX() >= min.getX() && pos.getX() <= max.getX() && pos.getZ() >= min.getZ() && pos.getZ() <= max.getZ()) {
+                candidates.put(pos, entry.getValue());
+            }
+        }
+        return candidates;
+    }
+
     /** Column-only debug callers can enumerate resident sections, but cannot request an unbounded vertical disk scan. */
     public Stream<PoiRecord> inLoadedColumn(Predicate<Holder<PoiType>> filter, ChunkPos column, PoiManager.Occupancy occupancy) {
         check();

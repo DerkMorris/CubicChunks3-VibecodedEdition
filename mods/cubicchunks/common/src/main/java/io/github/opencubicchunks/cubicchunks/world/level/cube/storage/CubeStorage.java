@@ -15,6 +15,8 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
@@ -126,6 +128,14 @@ public final class CubeStorage implements AutoCloseable {
                     new IllegalArgumentException("Invalid cube column bounds: " + cubeX + ", " + cubeZ + ", " + minCubeY + ".." + maxCubeY));
         }
         return enqueue(() -> new ColumnScan(cubeX, cubeZ, minCubeY, maxCubeY).read(), false);
+    }
+
+    /** One sparse directory traversal for a horizontal rectangle at every representable Y, with aggregate scan/data limits. */
+    public CompletableFuture<Map<CubePos, CompoundTag>> readHorizontalArea(int minCubeX, int maxCubeX, int minCubeZ, int maxCubeZ) {
+        if (minCubeX > maxCubeX || minCubeZ > maxCubeZ || !isPackedPosition(minCubeX, 0, minCubeZ) || !isPackedPosition(maxCubeX, 0, maxCubeZ)) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid horizontal cube scan bounds"));
+        }
+        return enqueue(() -> new HorizontalScan(minCubeX, maxCubeX, minCubeZ, maxCubeZ).read(), false);
     }
 
     private void checkColumnScanBudget(int scanned) throws IOException {
@@ -470,6 +480,98 @@ public final class CubeStorage implements AutoCloseable {
             CompoundTag tag = NbtIo.readCompressed(file, accounter);
             this.decodedBytes += accounter.getUsage();
             return tag;
+        }
+    }
+
+    private final class HorizontalScan {
+        private final int minX;
+        private final int maxX;
+        private final int minZ;
+        private final int maxZ;
+        private final Map<CubePos, CompoundTag> result = new LinkedHashMap<>();
+        private int scanned;
+        private long decodedBytes;
+
+        private HorizontalScan(int minX, int maxX, int minZ, int maxZ) {
+            this.minX = minX;
+            this.maxX = maxX;
+            this.minZ = minZ;
+            this.maxZ = maxZ;
+        }
+
+        private Map<CubePos, CompoundTag> read() throws IOException {
+            try (var regions = Files.newDirectoryStream(directory)) {
+                for (Path region : regions) {
+                    checkColumnScanBudget(++scanned);
+                    String name = region.getFileName().toString();
+                    if (!name.startsWith("r.")) {
+                        continue;
+                    }
+                    int[] coordinates = parseCoordinates(REGION_NAME, name);
+                    if (!intersectsRegion(coordinates)) {
+                        continue;
+                    }
+                    readRegion(region);
+                }
+            }
+            return Collections.unmodifiableMap(result);
+        }
+
+        private boolean intersectsRegion(int[] coordinates) {
+            return coordinates[0] >= Math.floorDiv(minX, REGION_SIZE) && coordinates[0] <= Math.floorDiv(maxX, REGION_SIZE)
+                    && coordinates[2] >= Math.floorDiv(minZ, REGION_SIZE) && coordinates[2] <= Math.floorDiv(maxZ, REGION_SIZE)
+                    && coordinates[1] >= Math.floorDiv(-CubePos.MAX_COORDINATE_VALUE - 1, REGION_SIZE)
+                    && coordinates[1] <= Math.floorDiv(CubePos.MAX_COORDINATE_VALUE, REGION_SIZE);
+        }
+
+        private void readRegion(Path region) throws IOException {
+            if (!Files.readAttributes(region, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).isDirectory()) {
+                throw new IOException("Expected a cube region directory: " + region);
+            }
+            try (var files = Files.newDirectoryStream(region)) {
+                for (Path file : files) {
+                    checkColumnScanBudget(++scanned);
+                    readFile(file);
+                }
+            }
+        }
+
+        private void readFile(Path file) throws IOException {
+            String name = file.getFileName().toString();
+            if (TEMPORARY_NAME.matcher(name).matches()) {
+                return;
+            }
+            int[] coordinates = parseCoordinates(CUBE_NAME, name);
+            if (!containsHorizontal(coordinates)) {
+                return;
+            }
+            if (!isPackedPosition(coordinates[0], coordinates[1], coordinates[2])) {
+                throw new IOException("Unrepresentable cube position: " + file);
+            }
+            CubePos pos = CubePos.of(coordinates[0], coordinates[1], coordinates[2]);
+            if (!pathFor(pos).equals(file)) {
+                throw new IOException("Cube file is in the wrong region: " + file);
+            }
+            if (!Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).isRegularFile()) {
+                throw new IOException("Expected a regular cube file: " + file);
+            }
+            if (result.size() >= maxColumnCubes) {
+                throw new IOException("Horizontal cube area exceeds the " + maxColumnCubes + " file limit");
+            }
+            long remainingBytes = maxColumnNbtBytes - decodedBytes;
+            if (remainingBytes <= 0) {
+                throw new IOException("Horizontal cube area exceeds the " + maxColumnNbtBytes + " byte accounting limit");
+            }
+            NbtAccounter accounter = NbtAccounter.create(Math.min(MAX_NBT_BYTES, remainingBytes));
+            CompoundTag tag = NbtIo.readCompressed(file, accounter);
+            decodedBytes += accounter.getUsage();
+            if (result.putIfAbsent(pos, tag) != null) {
+                throw new IOException("Duplicate saved cube " + pos);
+            }
+        }
+
+        private boolean containsHorizontal(int[] coordinates) {
+            return coordinates[0] >= minX && coordinates[0] <= maxX && coordinates[2] >= minZ && coordinates[2] <= maxZ;
         }
     }
 

@@ -59,6 +59,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.gameevent.EuclideanGameEventListenerRegistry;
 import net.minecraft.world.level.gameevent.GameEventListenerRegistry;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.blending.BlendingData;
@@ -172,9 +173,18 @@ public class LevelCube extends CubeAccess implements LevelClo {
     @TransformFromMethod(value = "getTicksForSerialization(J)Lnet/minecraft/world/level/chunk/ChunkAccess$PackedTicks;", owner = @Ref(LevelChunk.class))
     @Override public native ChunkAccess.PackedTicks getTicksForSerialization(long gameTime);
 
-    // TODO should this actually be dasm'd?
-    @TransformFromMethod(value = "getListenerRegistry(I)Lnet/minecraft/world/level/gameevent/GameEventListenerRegistry;", owner = @Ref(LevelChunk.class))
-    @Override public native GameEventListenerRegistry getListenerRegistry(int sectionY);
+    /** Cubes key all eight sections by their local XYZ index, never by section Y alone. */
+    @Override public GameEventListenerRegistry getListenerRegistry(int sectionIndex) {
+        if (!(level instanceof ServerLevel server) || sectionIndex < 0 || sectionIndex >= CubicConstants.SECTION_COUNT) {
+            return GameEventListenerRegistry.NOOP;
+        }
+        return gameEventListenerRegistrySections.computeIfAbsent(sectionIndex,
+                index -> new EuclideanGameEventListenerRegistry(server, index, this::removeGameEventListenerRegistry));
+    }
+
+    public GameEventListenerRegistry cc_getListenerRegistry(BlockPos pos) {
+        return cc_getCubePos().equals(CubePos.from(pos)) ? getListenerRegistry(Coords.blockToIndex(pos)) : GameEventListenerRegistry.NOOP;
+    }
 
     // dasm + mixin
     @TransformFromMethod(value = "getBlockState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;", owner = @Ref(LevelChunk.class))
@@ -315,8 +325,14 @@ public class LevelCube extends CubeAccess implements LevelClo {
     @Override public native void removeBlockEntity(BlockPos pos);
 
     // TODO maybe shouldn't be dasm
-    @TransformFromMethod(value = "removeGameEventListener(Lnet/minecraft/world/level/block/entity/BlockEntity;Lnet/minecraft/server/level/ServerLevel;)V", owner = @Ref(LevelChunk.class))
-    private native <T extends BlockEntity> void removeGameEventListener(T blockEntity, ServerLevel level);
+    private <T extends BlockEntity> void removeGameEventListener(T blockEntity, ServerLevel level) {
+        if (blockEntity.getBlockState().getBlock() instanceof EntityBlock block) {
+            var listener = block.getListener(level, blockEntity);
+            if (listener != null) {
+                cc_getListenerRegistry(blockEntity.getBlockPos()).unregister(listener);
+            }
+        }
+    }
 
     // TODO sectionY is definitely wrong here
     @TransformFromMethod(value = "removeGameEventListenerRegistry(I)V", owner = @Ref(LevelChunk.class))
@@ -501,9 +517,14 @@ public class LevelCube extends CubeAccess implements LevelClo {
     @TransformFromMethod(value = "registerAllBlockEntitiesAfterLevelLoad()V", owner = @Ref(LevelChunk.class))
     public native void registerAllBlockEntitiesAfterLevelLoad();
 
-    // TODO (P3): GameEvent stuff is a bit concerning
-    @TransformFromMethod(value = "addGameEventListener(Lnet/minecraft/world/level/block/entity/BlockEntity;Lnet/minecraft/server/level/ServerLevel;)V", owner = @Ref(LevelChunk.class))
-    private native <T extends BlockEntity> void addGameEventListener(T blockEntity, ServerLevel level);
+    private <T extends BlockEntity> void addGameEventListener(T blockEntity, ServerLevel level) {
+        if (blockEntity.getBlockState().getBlock() instanceof EntityBlock block) {
+            var listener = block.getListener(level, blockEntity);
+            if (listener != null) {
+                cc_getListenerRegistry(blockEntity.getBlockPos()).register(listener);
+            }
+        }
+    }
 
     @TransformFromMethod(value = "updateBlockEntityTicker(Lnet/minecraft/world/level/block/entity/BlockEntity;)V", owner = @Ref(LevelChunk.class))
     private native <T extends BlockEntity> void updateBlockEntityTicker(T blockEntity);

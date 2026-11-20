@@ -49,6 +49,7 @@ import io.github.opencubicchunks.cubicchunks.mixin.dasmsets.SectionPosToCubeSet;
 import io.github.opencubicchunks.cubicchunks.network.CCClientboundCubeLightInvalidatePacket;
 import io.github.opencubicchunks.cubicchunks.network.CCClientboundLevelCubeWithLightPacket;
 import io.github.opencubicchunks.cubicchunks.network.CCClientboundSetCubeCacheCenterPacket;
+import io.github.opencubicchunks.cubicchunks.platform.Platform;
 import io.github.opencubicchunks.cubicchunks.server.level.CCServerPlayer;
 import io.github.opencubicchunks.cubicchunks.server.level.CloGenerationTask;
 import io.github.opencubicchunks.cubicchunks.server.level.CloHolder;
@@ -82,7 +83,6 @@ import io.github.opencubicchunks.cubicchunks.world.level.poi.CubePoiLifecycle;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2LongMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
-import io.github.opencubicchunks.cubicchunks.platform.Platform;
 import net.minecraft.ReportedException;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
@@ -309,6 +309,7 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
     }
 
     @Override public void cc_onCubeBlockDataChanged(CubeAccess cube) {
+        ((io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnSource) this).cc_columnChanged(cube);
         this.cc_validateCubeLighting();
         if (!cc_lightingClosed && mainThreadExecutor.isSameThread() && cc_worldLights != null) {
             cc_worldLights.changed(cube);
@@ -1164,9 +1165,26 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
     @TransformFromMethod("updatePlayerStatus(Lnet/minecraft/server/level/ServerPlayer;Z)V")
     public native void cc_updatePlayerStatus(ServerPlayer player, boolean track);
 
+    /** Native entity registration must initialize and clear the same view used by cube streaming. */
+    @Inject(method = "updatePlayerStatus", at = @At("HEAD"), cancellable = true)
+    private void cc_routePlayerStatus(ServerPlayer player, boolean track, CallbackInfo ci) {
+        if (((CanBeCubic) level).cc_isCubic()) {
+            cc_updatePlayerStatus(player, track);
+            ci.cancel();
+        }
+    }
+
     @AddTransformToSets(ChunkToCloSet.ChunkMap_redirects.class)
     @TransformFromMethod("move(Lnet/minecraft/server/level/ServerPlayer;)V")
     public native void cc_move(ServerPlayer player);
+
+    @Inject(method = "move", at = @At("HEAD"), cancellable = true)
+    private void cc_routePlayerMovement(ServerPlayer player, CallbackInfo ci) {
+        if (((CanBeCubic) level).cc_isCubic()) {
+            cc_move(player);
+            ci.cancel();
+        }
+    }
 
     @Dynamic @Redirect(method = "cc_move", at = @At(value = "INVOKE", target = "Lnet/minecraft/core/SectionPos;asLong()J"))
     private long cc_compareFullCubePosition(SectionPos section) {
@@ -1193,8 +1211,7 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
     private void cc_onApplyChunkTrackingView_setChunkCacheCenterPacket(
             ServerGamePacketListenerImpl instance, Packet packet, ServerPlayer player, CloTrackingView cloTrackingView
     ) {
-        Platform.get().send(player,
-                new CCClientboundSetCubeCacheCenterPacket(((CloTrackingView.Positioned) cloTrackingView).center().cubePos()));
+        Platform.get().send(player, new CCClientboundSetCubeCacheCenterPacket(((CloTrackingView.Positioned) cloTrackingView).center().cubePos()));
     }
     // endregion
 

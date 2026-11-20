@@ -2,6 +2,8 @@ package io.github.opencubicchunks.cubicchunks.mixin.core.client;
 
 import io.github.opencubicchunks.cubicchunks.CanBeCubic;
 import io.github.opencubicchunks.cubicchunks.CubicChunks;
+import io.github.opencubicchunks.cubicchunks.client.multiplayer.CubeWeatherClient;
+import io.github.opencubicchunks.cubicchunks.network.CCClientboundWeatherColumnPacket;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.CubeTerrainGenerator;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
@@ -72,6 +74,12 @@ public class LoaderSmokeProbe {
                 && client.level.getBlockState(CC_MARKER).is(Blocks.GOLD_BLOCK)) {
             if (!((CanBeCubic) client.level).cc_isCubic() || CubicChunks.IS_IN_TEST)
                 throw new AssertionError("Client is not running real cubic code");
+            BlockPos camera = client.player.blockPosition();
+            int weatherSurface = ((CubeWeatherClient) client.level).cc_weatherColumns().height(camera.getX(), camera.getZ());
+            if (weatherSurface == CCClientboundWeatherColumnPacket.UNKNOWN)
+                return;
+            System.out.println("CC_LOADER_WEATHER_PASSED x=" + camera.getX() + " z=" + camera.getZ() + " surface=" + weatherSurface
+                    + " realPacket=true testBypass=" + CubicChunks.IS_IN_TEST);
             System.out.println("CC_LOADER_SMOKE_PASSED marker=" + client.level.getBlockState(CC_MARKER));
             cc_smokeFinished = true;
             client.stop();

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -20,6 +21,7 @@ import io.github.opencubicchunks.cubicchunks.CanBeCubic;
 import io.github.opencubicchunks.cubicchunks.testutils.BaseTest;
 import io.github.opencubicchunks.cubicchunks.testutils.Misc;
 import io.github.opencubicchunks.cubicchunks.world.level.CubicBlockBounds;
+import io.github.opencubicchunks.cubicchunks.world.level.CubicLevelReader;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.LevelCube;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -36,7 +38,6 @@ import net.minecraft.world.level.block.VineBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
-import net.minecraft.world.level.blockscan.BlockMatcher;
 import net.minecraft.world.level.gamerules.GameRules;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -106,11 +107,6 @@ class TestCubeBlockHeightMechanics extends BaseTest {
     void nativeVinesSpreadUpAndDownAcrossCubeSeam(int y) {
         for (Direction direction : List.of(Direction.UP, Direction.DOWN)) {
             var world = new World();
-            // Isolate the growth-height guard from the separate column-based density scanner.
-            var density = mock(BlockMatcher.class);
-            when(density.filterState(any())).thenReturn(density);
-            when(density.atMostMatched(4)).thenReturn(true);
-            when(world.level.findBlocksIn(any(BlockPos.class), any(BlockPos.class))).thenReturn(density);
             when(world.random.nextInt(anyInt())).thenAnswer(call -> (int) call.getArgument(0) == 6 ? direction.ordinal() : 0);
             when(world.random.nextBoolean()).thenReturn(direction == Direction.DOWN);
             BlockPos pos = new BlockPos(15, direction == Direction.UP ? y - 1 : y, 15);
@@ -128,6 +124,23 @@ class TestCubeBlockHeightMechanics extends BaseTest {
         return new DirectionalPlaceContext(world.level, pos, Direction.NORTH, new ItemStack(block.asItem()), Direction.UP);
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = { 96, 32000, -32000, 32000000, -32000000 })
+    void nativeVineDensityLimitCountsRealCubesAcrossSeam(int y) {
+        var world = new World();
+        when(world.random.nextInt(anyInt())).thenAnswer(call -> (int) call.getArgument(0) == 6 ? Direction.UP.ordinal() : 0);
+        when(world.random.nextBoolean()).thenReturn(false);
+        BlockPos pos = new BlockPos(31, y - 1, 31);
+        for (int x = -2; x <= 2; x++) {
+            BlockPos vine = pos.offset(x, 0, 0);
+            world.put(vine.north(), Blocks.STONE.defaultBlockState());
+            world.put(vine, Blocks.VINE.defaultBlockState().setValue(VineBlock.NORTH, true));
+        }
+        world.put(pos.above().north(), Blocks.STONE.defaultBlockState());
+        world.get(pos).randomTick(world.level, pos, world.random);
+        assertTrue(world.get(pos.above()).isAir(), "Five vines must suppress the native upward spread at every height");
+    }
+
     private static final class World {
         final ServerLevel level = Misc.mockLevelWithPalettes(ServerLevel.class);
         final RandomSource random = mock();
@@ -136,6 +149,10 @@ class TestCubeBlockHeightMechanics extends BaseTest {
         World() {
             Misc.setupLevelHeight(level, -64, 384);
             when(((CanBeCubic) level).cc_isCubic()).thenReturn(true);
+            doCallRealMethod().when(level).findBlocksIn(any(BlockPos.class), any(BlockPos.class));
+            when(((CubicLevelReader) level).cc_getCube(anyInt(), anyInt(), anyInt(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                    .thenAnswer(call -> cubes.computeIfAbsent(CubePos.of(call.getArgument(0), call.getArgument(1), call.getArgument(2)),
+                            key -> new LevelCube(level, key)));
             when(level.getGameRules()).thenReturn(new GameRules(FeatureFlags.DEFAULT_FLAGS));
             when(level.getRandom()).thenReturn(random);
             when(level.getBlockState(any())).thenAnswer(call -> get(call.getArgument(0)));

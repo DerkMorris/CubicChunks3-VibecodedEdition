@@ -3,8 +3,11 @@
   "id": "cubicchunks_world_smoke",
   "version": "1.0.0",
   "name": "Cubic world launch probe (development only)",
-  "environment": "client",
+  "environment": "*",
   "entrypoints": {
+    "main": [
+      "io.github.opencubicchunks.smoke.DedicatedProbeServer"
+    ],
     "client": [
       "io.github.opencubicchunks.smoke.WorldEntryProbe"
     ]

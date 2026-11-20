@@ -70,6 +70,13 @@ loom {
 if (project.hasProperty('worldSmoke')) {
     loom.mods { cubicchunks_world_smoke { sourceSet sourceSets.worldSmoke } }
     loom.runs {
+        dedicatedSmoke {
+            server()
+            source sourceSets.worldSmoke
+            runDir rootProject.file('run/dedicated-smoke').absolutePath
+            vmArg '-Xmx3G'
+            programArg '--nogui'
+        }
         worldSmoke {
             client()
             source sourceSets.worldSmoke
@@ -94,6 +101,10 @@ if (project.hasProperty('worldSmoke')) {
             vmArg "-Dcubicchunks.smoke.daylight=${project.hasProperty('smokeDaylight')}"
             vmArg "-Dcubicchunks.smoke.mobTicks=${project.hasProperty('smokeMobTicks') || project.hasProperty('smokeMobTravel')}"
             vmArg "-Dcubicchunks.smoke.gameplay=${project.hasProperty('smokeGameplay')}"
+            vmArg "-Dcubicchunks.smoke.environment=${project.hasProperty('smokeEnvironment')}"
+            vmArg "-Dcubicchunks.smoke.weather=${project.hasProperty('smokeWeather')}"
+            vmArg "-Dcubicchunks.smoke.portals=${project.hasProperty('smokePortals')}"
+            vmArg "-Dcubicchunks.smoke.raidBoss=${project.hasProperty('smokeRaidBoss')}"
             vmArg "-Dcubicchunks.smoke.endermanTeleport=${project.hasProperty('smokeEndermanTeleport')}"
             vmArg "-Dcubicchunks.smoke.mobTravel=${project.hasProperty('smokeMobTravel')}"
             vmArg "-Dcubicchunks.smoke.entityTravel=${project.hasProperty('smokeEntityTravel')}"
@@ -101,6 +112,39 @@ if (project.hasProperty('worldSmoke')) {
             if (project.hasProperty('smokeProfile')) {
                 vmArg "-XX:StartFlightRecording=filename=${file(project.property('smokeProfile')).absolutePath},settings=profile,dumponexit=true"
             }
+        }
+    }
+    tasks.register('writeWorldSmokeLaunch') {
+        group = 'verification'
+        description = 'Prepares the isolated real-client launch for the two-process multiplayer probe.'
+        dependsOn { tasks.named('runWorldSmoke').get().taskDependencies.getDependencies(tasks.named('runWorldSmoke').get()) }
+        doLast {
+            def run = tasks.named('runWorldSmoke').get()
+            // The external launcher writes one complete argument file per client.
+            run.useArgFile.set(false)
+            def launch = [java: run.javaLauncher.get().executablePath.asFile.absolutePath,
+                          jvmArgs: run.allJvmArgs, classpath: run.classpath.asPath,
+                          mainClass: run.mainClass.get(),
+                          args: run.args + run.argumentProviders.collectMany { it.asArguments().toList() }]
+            def destination = rootProject.layout.buildDirectory.file('diagnostics/world-smoke-launch.json').get().asFile
+            destination.parentFile.mkdirs()
+            destination.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(launch)), 'UTF-8')
+        }
+    }
+    tasks.register('writeDedicatedSmokeLaunch') {
+        group = 'verification'
+        description = 'Prepares the isolated dedicated-server probe without launching or accepting its EULA.'
+        dependsOn { tasks.named('runDedicatedSmoke').get().taskDependencies.getDependencies(tasks.named('runDedicatedSmoke').get()) }
+        doLast {
+            def run = tasks.named('runDedicatedSmoke').get()
+            run.useArgFile.set(false)
+            def launch = [java: run.javaLauncher.get().executablePath.asFile.absolutePath,
+                          jvmArgs: run.allJvmArgs, classpath: run.classpath.asPath,
+                          mainClass: run.mainClass.get(),
+                          args: run.args + run.argumentProviders.collectMany { it.asArguments().toList() }]
+            def destination = rootProject.layout.buildDirectory.file('diagnostics/dedicated-smoke-launch.json').get().asFile
+            destination.parentFile.mkdirs()
+            destination.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(launch)), 'UTF-8')
         }
     }
 }
