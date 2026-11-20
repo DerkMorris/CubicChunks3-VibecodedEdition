@@ -77,6 +77,9 @@ The `cubicchunks` mod ID, save format and network packet IDs have been preserved
 
 ## In-game checks
 
+The [gameplay compatibility matrix](docs/gameplay-compatibility.ru.md) records coverage, known gaps, and reproducible commands.
+Registry-wide storage checks verify data preservation; compatibility with every gameplay mechanic has not yet been established.
+
 ```powershell
 .\dev.cmd -PworldSmoke -PsmokeDeepCaves -PsmokeCaveCurves -PsmokeOreProfiles -PsmokeWorld=layout-check runWorldSmoke
 .\dev.cmd -PworldSmoke -PsmokeDeepCaves -PsmokeCaveCurves -PsmokeOreProfiles -PsmokeWorld=layout-check -PsmokeReopen runWorldSmoke

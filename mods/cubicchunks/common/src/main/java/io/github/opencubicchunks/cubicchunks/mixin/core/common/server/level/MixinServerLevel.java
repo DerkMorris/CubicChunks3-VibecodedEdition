@@ -19,6 +19,7 @@ import io.github.opencubicchunks.cc_core.world.level.CloPos;
 import io.github.opencubicchunks.cubicchunks.mixin.core.common.world.level.MixinLevel;
 import io.github.opencubicchunks.cubicchunks.mixin.dasmsets.ChunkToCloSet;
 import io.github.opencubicchunks.cubicchunks.mixin.dasmsets.ChunkToCubeSet;
+import io.github.opencubicchunks.cubicchunks.server.level.CubeRandomTicks;
 import io.github.opencubicchunks.cubicchunks.server.level.CubicServerLevel;
 import io.github.opencubicchunks.cubicchunks.server.level.ServerCubeCache;
 import io.github.opencubicchunks.cubicchunks.world.level.chunklike.LevelClo;
@@ -198,7 +199,7 @@ public abstract class MixinServerLevel extends MixinLevel implements CubicServer
 
     @AddMethodToSets(containers = ChunkToCubeSet.ServerLevel_redirects.class, method = "tickChunk(Lnet/minecraft/world/level/chunk/LevelChunk;I)V")
     public void cc_tickCube(LevelCube levelCube, int randomTickSpeed) {
-        // TODO (P2) cube ticking
+        CubeRandomTicks.tick((ServerLevel) (Object) this, levelCube, randomTickSpeed);
     }
 
     // TODO (P2) waitForChunkAndEntities

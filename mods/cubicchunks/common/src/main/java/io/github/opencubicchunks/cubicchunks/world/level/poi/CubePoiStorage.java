@@ -243,21 +243,24 @@ public final class CubePoiStorage implements AutoCloseable {
     public void flushAll() {
         check();
         for (CubePos pos : new ArrayList<>(dirty)) {
-            flush(pos);
+            save(pos, true);
         }
         saves.awaitAll();
     }
 
     public void flush(CubePos pos) {
         check();
-        saves.awaitAll();
-        save(pos);
+        save(pos, true);
         saves.awaitAll();
     }
 
     public boolean save(CubePos pos) {
+        return save(pos, false);
+    }
+
+    private boolean save(CubePos pos, boolean waitForCapacity) {
         check();
-        if (!saves.canSubmit(pos)) {
+        if (!waitForCapacity && !saves.canSubmit(pos)) {
             return false;
         }
         if (!dirty.contains(pos)) {
@@ -265,7 +268,9 @@ public final class CubePoiStorage implements AutoCloseable {
         }
         try {
             var tag = CubePoiData.save(registries, pos, Arrays.stream(cubes.get(pos)).map(PoiSection::pack).toList());
-            if (!saves.submit(pos, tag, snapshot -> store().write(pos, snapshot), () -> {}, () -> dirty.add(pos))) {
+            if (waitForCapacity) {
+                saves.submitBlocking(pos, tag, snapshot -> store().write(pos, snapshot), () -> {}, () -> dirty.add(pos));
+            } else if (!saves.submit(pos, tag, snapshot -> store().write(pos, snapshot), () -> {}, () -> dirty.add(pos))) {
                 return false;
             }
             dirty.remove(pos);

@@ -93,6 +93,7 @@ if (project.hasProperty('worldSmoke')) {
             vmArg "-Dcubicchunks.smoke.biomes=${project.hasProperty('smokeBiomes')}"
             vmArg "-Dcubicchunks.smoke.daylight=${project.hasProperty('smokeDaylight')}"
             vmArg "-Dcubicchunks.smoke.mobTicks=${project.hasProperty('smokeMobTicks') || project.hasProperty('smokeMobTravel')}"
+            vmArg "-Dcubicchunks.smoke.gameplay=${project.hasProperty('smokeGameplay')}"
             vmArg "-Dcubicchunks.smoke.endermanTeleport=${project.hasProperty('smokeEndermanTeleport')}"
             vmArg "-Dcubicchunks.smoke.mobTravel=${project.hasProperty('smokeMobTravel')}"
             vmArg "-Dcubicchunks.smoke.entityTravel=${project.hasProperty('smokeEntityTravel')}"
@@ -213,6 +214,8 @@ spotless {
         removeUnusedImports()
     }
 }
+// Shared sources live beside this loader project. Spotless's path cache must include that sibling directory.
+tasks.named('spotlessJava') { getProjectDir().set(rootProject.layout.projectDirectory) }
 tasks.withType(Checkstyle).configureEach { dependsOn spotlessCheck; configDirectory = rootProject.file('config/checkstyle') }
 jar { from(rootProject.file('LICENSE')) { rename { "${it}_cubicchunks" } } }
 publishing {

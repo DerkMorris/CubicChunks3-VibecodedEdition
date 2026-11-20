@@ -80,6 +80,29 @@ class TestCubePoiManager extends BaseTest {
     }
 
     @Test
+    void bulkFlushPersistsMoreCubesThanTheSaveQueueCapacity() throws Exception {
+        BlockPos start = new BlockPos(2, -10000, 2);
+        try (var world = new CubeMobTestWorld(directory.resolve("entities")); var poi = PoiTestSupport.attach(world.level, directory)) {
+            for (int i = 0; i < 40; i++) {
+                BlockPos pos = start.above(i * 32);
+                world.block(pos, bed());
+                if (i % 2 == 0) {
+                    poi.take(type -> true, (type, point) -> true, pos, 0).orElseThrow();
+                }
+            }
+            poi.flushAll();
+            assertFalse(poi.hasWork());
+        }
+        try (var world = new CubeMobTestWorld(directory.resolve("entities")); var poi = PoiTestSupport.attach(world.level, directory)) {
+            for (int i = 0; i < 40; i++) {
+                BlockPos pos = start.above(i * 32);
+                assertTrue(poi.existsAtPosition(PoiTypes.HOME, pos));
+                assertEquals(i % 2 == 0 ? 1 : 0, poi.getCountInRange(type -> true, pos, 0, PoiManager.Occupancy.IS_OCCUPIED));
+            }
+        }
+    }
+
+    @Test
     void fullCoordinatesAndNativeTicketsAreIndependentAtAliasedHeights() throws Exception {
         try (var world = new CubeMobTestWorld(directory.resolve("entities")); var poi = PoiTestSupport.attach(world.level, directory)) {
             for (int y : new int[] { 32000008, -32000024 }) {

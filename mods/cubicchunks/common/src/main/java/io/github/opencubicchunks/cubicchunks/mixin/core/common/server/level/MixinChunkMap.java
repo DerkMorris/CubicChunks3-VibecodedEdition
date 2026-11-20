@@ -155,6 +155,8 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
     @Unique
     private static final int CC_SAVE_SNAPSHOTS_PER_PASS = 4;
     @Unique
+    private static final int CC_UNLOAD_RETRIES_PER_PASS = 128;
+    @Unique
     private int cc_saveSnapshotsRemaining = Integer.MAX_VALUE;
     @Unique
     private boolean cc_flushingSaves;
@@ -791,6 +793,10 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
             try {
                 cc_saveAllChunks(flush);
                 if (flush) {
+                    var poi = CubePoiLifecycle.storage(this.level);
+                    if (poi != null) {
+                        poi.flushAll();
+                    }
                     cc_awaitCubeSaves();
                 }
             } finally {
@@ -805,6 +811,11 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
     @AddTransformToSets(ChunkToCloSet.ChunkMap_redirects.class)
     @TransformFromMethod("saveChunksEagerly(Ljava/util/function/BooleanSupplier;)V")
     private native void cc_saveClosEagerly(BooleanSupplier hasMoreTime);
+
+    @Dynamic @WrapMethod(method = "cc_saveClosEagerly")
+    private void cc_stopEagerSaveScanWhenBudgetExhausted(BooleanSupplier hasMoreTime, Operation<Void> original) {
+        original.call((BooleanSupplier) () -> cc_saveSnapshotsRemaining > 0 && hasMoreTime.getAsBoolean());
+    }
 
     @AddMethodToSets(containers = ChunkToCloSet.ChunkMap_redirects.class, method = "scheduleUnload(JLnet/minecraft/server/level/ChunkHolder;)V")
     private void cc_scheduleUnload(long chunkPos, ChunkHolder chunkHolder) {
@@ -838,9 +849,6 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
 
     @Unique
     private boolean cc_finishCubeUnload(ChunkHolder holder) {
-        if (cc_saveSnapshotsRemaining == 0) {
-            return false;
-        }
         CloAccess latest = ((CloHolder) holder).cc_getLatestClo();
         if (latest == null) {
             return true;
@@ -1014,6 +1022,16 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
     @TransformFromMethod("saveChunkIfNeeded(Lnet/minecraft/server/level/ChunkHolder;J)Z")
     private native boolean cc_saveChunkIfNeeded(ChunkHolder holder, long gameTime);
 
+    @WrapOperation(method = "save", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/ai/village/poi/PoiManager;flush(Lnet/minecraft/world/level/ChunkPos;)V"))
+    private void cc_doNotFlushCubePoiForCompatibilityColumn(
+            net.minecraft.world.entity.ai.village.poi.PoiManager poi, ChunkPos pos, Operation<Void> original
+    ) {
+        if (!((CanBeCubic) level).cc_isCubic()) {
+            original.call(poi, pos);
+        }
+        // A column has no cube Y. Cubic POI is saved by cube saves and its own tick/explicit-flush lifecycle.
+    }
+
     @AddMethodToSets(containers = ChunkToCloSet.ChunkMap_redirects.class, method = "save(Lnet/minecraft/world/level/chunk/ChunkAccess;)Z")
     private boolean cc_save(CloAccess cloAccess) {
         if (cloAccess instanceof ChunkAccess chunk) {
@@ -1021,22 +1039,23 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
         }
         this.cc_checkCubeSaveFailure();
         CubeAccess cube = cloAccess instanceof ImposterProtoCube imposter ? (CubeAccess) imposter.cc_getWrappedClo() : (CubeAccess) cloAccess;
-        if (cc_saveSnapshotsRemaining == 0) {
+        var poi = CubePoiLifecycle.storage(this.level);
+        if (!cube.isUnsaved()) {
+            // Ticket-only POI changes are independent of block snapshots. Loaded cubes were reconciled on load or their last save.
+            if (poi != null) {
+                poi.save(cube.cc_getCubePos());
+            }
+            return false;
+        }
+        if (cc_saveSnapshotsRemaining == 0 || !cc_flushingSaves && !cc_saves().canSubmit(cube.cc_getCubePos())) {
             chunksToEagerlySave.add(cube.cc_getCloPos().asLong());
             return false;
         }
+        // Charge only actual snapshot work; a clean cube or a pending write must not starve unrelated cubes behind it.
         cc_saveSnapshotsRemaining--;
-        var poi = CubePoiLifecycle.storage(this.level);
         if (poi != null) {
             poi.reconcile(cube);
-            if (cc_flushingSaves) {
-                poi.flush(cube.cc_getCubePos());
-            } else {
-                poi.save(cube.cc_getCubePos());
-            }
-        }
-        if (!cube.isUnsaved()) {
-            return false;
+            poi.save(cube.cc_getCubePos());
         }
         return cc_submitCubeSave(cube);
     }
@@ -1045,10 +1064,7 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
     private boolean cc_submitCubeSave(CubeAccess cube) {
         CloPos pos = cube.cc_getCloPos();
         try {
-            if (cc_flushingSaves) {
-                cc_saves().awaitAll();
-            }
-            if (!cc_saves().canSubmit(cube.cc_getCubePos())) {
+            if (!cc_flushingSaves && !cc_saves().canSubmit(cube.cc_getCubePos())) {
                 chunksToEagerlySave.add(pos.asLong());
                 return false;
             }
@@ -1057,6 +1073,11 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
             }
             CompoundTag snapshot = SerializableCubeData.copyOf(this.level, cube).write();
             ChunkType type = cube.getPersistedStatus().getChunkType();
+            if (cc_flushingSaves) {
+                cc_saves().submitBlocking(cube.cc_getCubePos(), snapshot, tag -> cc_writeCubeSnapshot(cube.cc_getCubePos(), tag, type),
+                        () -> cc_markPosition(pos, type), cube::markUnsaved);
+                return true;
+            }
             boolean accepted = cc_saves().submit(cube.cc_getCubePos(), snapshot, tag -> cc_writeCubeSnapshot(cube.cc_getCubePos(), tag, type),
                     () -> cc_markPosition(pos, type), cube::markUnsaved);
             if (!accepted) {
@@ -1286,9 +1307,16 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
     private void cc_checkUnloadFailure(BooleanSupplier hasMoreTime, CallbackInfo ci) {
         this.cc_checkCubeSaveFailure();
         cc_saveSnapshotsRemaining = cc_flushingSaves ? Integer.MAX_VALUE : CC_SAVE_SNAPSHOTS_PER_PASS;
-        var retry = new LinkedHashMap<>(cc_retryUnloads);
-        cc_retryUnloads.clear();
-        retry.forEach(this::cc_scheduleUnload);
+        // Remove a bounded prefix. Unfinished callbacks rejoin the tail, so large backlogs progress fairly without rescanning every holder.
+        int remaining = cc_flushingSaves ? cc_retryUnloads.size() : CC_UNLOAD_RETRIES_PER_PASS;
+        var iterator = cc_retryUnloads.entrySet().iterator();
+        while (remaining-- > 0 && iterator.hasNext()) {
+            var retry = iterator.next();
+            long pos = retry.getKey();
+            ChunkHolder holder = retry.getValue();
+            iterator.remove();
+            cc_scheduleUnload(pos, holder);
+        }
     }
 
     @Dynamic @Inject(method = "cc_processUnloads", at = @At("RETURN"))

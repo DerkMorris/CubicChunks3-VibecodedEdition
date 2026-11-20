@@ -77,6 +77,9 @@ Gradle Wrapper включён в проект. Подмодули Git для с�
 
 ## Проверки в игре
 
+Матрица покрытия механик, найденные ограничения и команды воспроизведения: [проверка совместимости игровых механик](docs/gameplay-compatibility.ru.md).
+Проверка всех записей реестров подтверждает сохранность данных; полная совместимость всех игровых механик пока не доказана.
+
 ```powershell
 .\dev.cmd -PworldSmoke -PsmokeDeepCaves -PsmokeCaveCurves -PsmokeOreProfiles -PsmokeWorld=layout-check runWorldSmoke
 .\dev.cmd -PworldSmoke -PsmokeDeepCaves -PsmokeCaveCurves -PsmokeOreProfiles -PsmokeWorld=layout-check -PsmokeReopen runWorldSmoke

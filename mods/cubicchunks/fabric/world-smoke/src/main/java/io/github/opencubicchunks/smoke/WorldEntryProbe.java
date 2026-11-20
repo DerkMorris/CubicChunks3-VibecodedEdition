@@ -33,6 +33,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
     private final WorldLightDecreaseProbe darkening = Boolean.getBoolean("cubicchunks.smoke.lightDecrease") ? new WorldLightDecreaseProbe() : null;
     private final WorldMobTickProbe mobs = Boolean.getBoolean("cubicchunks.smoke.mobTicks") ? new WorldMobTickProbe() : null;
     private final WorldEntityTravelProbe travel = Boolean.getBoolean("cubicchunks.smoke.entityTravel") ? new WorldEntityTravelProbe() : null;
+    private final WorldGameplayProbe gameplay = Boolean.getBoolean("cubicchunks.smoke.gameplay") ? new WorldGameplayProbe() : null;
 
     @Override public void onInitializeClient() {
         if (turns != null) { turns.register(); }
@@ -99,7 +100,8 @@ public final class WorldEntryProbe implements ClientModInitializer {
                 mobs.tick(client);
             }
             if (travel != null && ticks >= 160) { travel.tick(client); }
-            if (caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null && darkening == null && mobs == null && travel == null && daylight == null && biomes == null && ticks >= Integer.getInteger("cubicchunks.smoke.ticks", 200) && client.gui.screen() == null
+            if (gameplay != null && ticks >= 160) { gameplay.tick(client); }
+            if (caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null && darkening == null && mobs == null && travel == null && daylight == null && biomes == null && gameplay == null && ticks >= Integer.getInteger("cubicchunks.smoke.ticks", 200) && client.gui.screen() == null
                     && (!asyncSaves || reopen || asyncProbe.isDone())
                     && (!asyncSaves || client.level.getBlockState(MARKER.above()).is(net.minecraft.world.level.block.Blocks.EMERALD_BLOCK))
                     && client.levelRenderer.visibleSections().size() > 0
@@ -109,7 +111,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
                         + " testBypass=" + CubicChunks.IS_IN_TEST);
                 client.stop();
             }
-            if (ticks == (caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null && darkening == null && mobs == null && travel == null && daylight == null && biomes == null ? 1200 : 6000)) {
+            if (ticks == (caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null && darkening == null && mobs == null && travel == null && daylight == null && biomes == null && gameplay == null ? 1200 : 6000)) {
                 throw new IllegalStateException("World entry timed out: " + client.gui.screen());
             }
         }

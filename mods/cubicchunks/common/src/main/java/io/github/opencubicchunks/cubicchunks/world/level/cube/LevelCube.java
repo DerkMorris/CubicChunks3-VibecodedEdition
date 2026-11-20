@@ -27,6 +27,8 @@ import io.github.opencubicchunks.cubicchunks.server.level.CubicServerLevel;
 import io.github.opencubicchunks.cubicchunks.world.level.chunklike.LevelClo;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeHeightmap;
 import io.github.opencubicchunks.cubicchunks.world.level.poi.CubePoiLifecycle;
+import io.github.opencubicchunks.cubicchunks.world.ticks.CubicLevelTicks;
+import io.github.opencubicchunks.cubicchunks.world.ticks.CubicTickContainer;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.core.BlockPos;
@@ -116,6 +118,8 @@ public class LevelCube extends CubeAccess implements LevelClo {
         this.postLoad = postLoad;
         this.blockTicks = blockTicks;
         this.fluidTicks = fluidTicks;
+        ((CubicTickContainer) blockTicks).cc_setUnsavedListener(this::markUnsaved);
+        ((CubicTickContainer) fluidTicks).cc_setUnsavedListener(this::markUnsaved);
     }
 
     public LevelCube(ServerLevel level, ProtoCube cube, @Nullable LevelCube.PostLoadProcessor postLoad) {
@@ -440,16 +444,15 @@ public class LevelCube extends CubeAccess implements LevelClo {
     @TransformFromMethod(value = "unpackTicks(J)V", owner = @Ref(LevelChunk.class))
     public native void unpackTicks(long pos);
 
-    // TODO (P2 or P3) ticks are disabled for now; stub methods as placeholders
-//    @TransformFromMethod(value = @MethodSig("registerTickContainerInLevel(Lnet/minecraft/server/level/ServerLevel;)V"), owner = @Ref(LevelChunk
-//    .class))
-//    public native void registerTickContainerInLevel(ServerLevel level);
-    public void registerTickContainerInLevel(ServerLevel level) {}
+    public void registerTickContainerInLevel(ServerLevel level) {
+        ((CubicLevelTicks<Block>) level.getBlockTicks()).cc_addContainer(cubePos, blockTicks);
+        ((CubicLevelTicks<Fluid>) level.getFluidTicks()).cc_addContainer(cubePos, fluidTicks);
+    }
 
-    // @TransformFromMethod(value = @MethodSig("unregisterTickContainerFromLevel(Lnet/minecraft/server/level/ServerLevel;)V"), owner = @Ref
-    // (LevelChunk.class))
-//    public native void unregisterTickContainerFromLevel(ServerLevel level);
-    public void unregisterTickContainerFromLevel(ServerLevel level) {}
+    public void unregisterTickContainerFromLevel(ServerLevel level) {
+        ((CubicLevelTicks<Block>) level.getBlockTicks()).cc_removeContainer(cubePos);
+        ((CubicLevelTicks<Fluid>) level.getFluidTicks()).cc_removeContainer(cubePos);
+    }
 
     @Override public void registerDebugValues(ServerLevel level, DebugValueSource.Registration registration) {
         if (!this.getAllStarts().isEmpty()) {

@@ -37,6 +37,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
 import io.github.opencubicchunks.cc_core.api.CubePos;
@@ -164,7 +165,12 @@ public class IntegrationTestCubePersistence extends BaseTest {
             assertEquals(4, cubeFiles().size());
             assertEquals(6, cubes.stream().filter(CubeAccess::isUnsaved).count());
             for (int pass = 0; pass < 3; pass++) {
-                fixture.access.cc_testProcessUnloadsAsync(() -> true);
+                AtomicInteger workChecks = new AtomicInteger();
+                fixture.access.cc_testProcessUnloadsAsync(() -> {
+                    workChecks.incrementAndGet();
+                    return true;
+                });
+                assertTrue(workChecks.get() <= 5, "Eager saving must stop scanning deferred cubes once the four snapshot slots are spent");
                 fixture.access.cc_testAwaitSaves();
             }
             assertEquals(10, cubeFiles().size());
@@ -242,6 +248,118 @@ public class IntegrationTestCubePersistence extends BaseTest {
     }
 
     @Test
+    void pendingWritesDoNotConsumeTheSnapshotBudgetOfOtherUnloadingCubes() throws Exception {
+        List<CubePos> positions = new ArrayList<>();
+        try (Fixture fixture = open()) {
+            fixture.load(CloPos.cube(CubePos.ZERO));
+            CubeStorage storage = CubeStorageBarrier.storage(net.minecraft.world.level.chunk.storage.SimpleRegionStorage.class, fixture.map,
+                    "cc_cubeStorage");
+            List<ProtoCube> cubes = new ArrayList<>();
+            try (var barrier = new CubeStorageBarrier(storage)) {
+                for (int index = 0; index < 8; index++) {
+                    CubePos pos = CubePos.of(0, -313 - index, 0);
+                    positions.add(pos);
+                    ProtoCube cube = cube(fixture, pos, Blocks.GOLD_BLOCK.defaultBlockState());
+                    cubes.add(cube);
+                    if (index < 4) {
+                        assertTrue(fixture.access.cc_testSaveAsync(cube));
+                        cube.setBlockState(sample(pos), Blocks.EMERALD_BLOCK.defaultBlockState(), 0);
+                        cube.markUnsaved();
+                    }
+                    ChunkHolder holder = pendingHolder(cube);
+                    long key = cube.cc_getCloPos().asLong();
+                    fixture.access.cc_testPendingUnloads().put(key, holder);
+                    fixture.access.cc_testScheduleUnload(key, holder);
+                }
+                fixture.access.cc_testProcessUnloadsAsync(() -> true);
+                assertTrue(cubes.subList(0, 4).stream().allMatch(CubeAccess::isUnsaved), "Edits newer than the pending writes must remain dirty");
+                assertTrue(cubes.subList(4, 8).stream().noneMatch(CubeAccess::isUnsaved),
+                        "Pending earlier writes must leave all four snapshot slots available");
+                assertEquals(8, fixture.access.cc_testPendingUnloads().size(), "No holder may be released before disk acknowledges its data");
+            }
+            processUnloads(fixture.access, () -> true);
+        }
+        try (Fixture reopened = open()) {
+            for (int index = 0; index < positions.size(); index++) {
+                CubePos pos = positions.get(index);
+                assertEquals((index < 4 ? Blocks.EMERALD_BLOCK : Blocks.GOLD_BLOCK).defaultBlockState(),
+                        reopened.load(CloPos.cube(pos)).getBlockState(sample(pos)));
+            }
+        }
+    }
+
+    @Test
+    void cleanCubesCanUnloadAfterTheSnapshotBudgetIsExhausted() throws Exception {
+        try (Fixture fixture = open()) {
+            List<ProtoCube> clean = new ArrayList<>();
+            for (int index = 0; index < 8; index++) {
+                ProtoCube cube = cube(fixture, CubePos.of(index, -313, 0), Blocks.STONE.defaultBlockState());
+                assertTrue(save(fixture.access, cube));
+                clean.add(cube);
+            }
+            CubeStorage storage = CubeStorageBarrier.storage(net.minecraft.world.level.chunk.storage.SimpleRegionStorage.class, fixture.map,
+                    "cc_cubeStorage");
+            try (var barrier = new CubeStorageBarrier(storage)) {
+                List<ProtoCube> all = new ArrayList<>();
+                for (int index = 0; index < 4; index++) {
+                    all.add(cube(fixture, CubePos.of(index, -314, 0), Blocks.GOLD_BLOCK.defaultBlockState()));
+                }
+                all.addAll(clean);
+                for (ProtoCube cube : all) {
+                    ChunkHolder holder = pendingHolder(cube);
+                    long key = cube.cc_getCloPos().asLong();
+                    fixture.access.cc_testPendingUnloads().put(key, holder);
+                    fixture.access.cc_testScheduleUnload(key, holder);
+                }
+                fixture.access.cc_testProcessUnloadsAsync(() -> true);
+                assertEquals(4, fixture.access.cc_testPendingUnloads().size(), "Only the four unacknowledged writes should retain holders");
+                for (ProtoCube cube : clean) {
+                    assertFalse(fixture.access.cc_testPendingUnloads().containsKey(cube.cc_getCloPos().asLong()));
+                }
+            }
+            processUnloads(fixture.access, () -> true);
+        }
+    }
+
+    @Test
+    void largeUnloadBacklogRetriesBoundedBatchesWithoutStarvingItsTail() throws Exception {
+        try (Fixture fixture = open()) {
+            int count = 512;
+            AtomicInteger attempts = new AtomicInteger();
+            Set<CubePos> ready = new java.util.HashSet<>();
+            when(((CubicServerLevel) fixture.level).cc_tryUnloadCubeEntities(any())).thenAnswer(invocation -> {
+                attempts.incrementAndGet();
+                return ready.contains(invocation.getArgument(0));
+            });
+            CubePos tail = CubePos.of(0, -313 - count + 1, 0);
+            for (int index = 0; index < count; index++) {
+                CubePos pos = CubePos.of(0, -313 - index, 0);
+                LevelCube cube = mock();
+                when(cube.cc_getCubePos()).thenReturn(pos);
+                when(cube.cc_getCloPos()).thenReturn(CloPos.cube(pos));
+                ChunkHolder holder = pendingHolder(cube);
+                long key = cube.cc_getCloPos().asLong();
+                fixture.access.cc_testPendingUnloads().put(key, holder);
+                fixture.access.cc_testScheduleUnload(key, holder);
+            }
+            fixture.access.cc_testProcessUnloadsAsync(() -> true);
+            assertEquals(count, attempts.getAndSet(0), "All newly dropped clean cubes can enter entity unload without spending snapshot slots");
+            ready.add(tail);
+            int totalAttempts = 0;
+            for (int pass = 0; pass < 4; pass++) {
+                fixture.access.cc_testProcessUnloadsAsync(() -> true);
+                int batch = attempts.getAndSet(0);
+                assertTrue(batch > 0 && batch <= 128, "Retry work per pass must stay bounded as the retained backlog grows");
+                totalAttempts += batch;
+            }
+            assertEquals(count, totalAttempts, "Round-robin retries visit the backlog once, rather than repeatedly scanning every holder");
+            assertFalse(fixture.access.cc_testPendingUnloads().containsKey(CloPos.cube(tail).asLong()), "A ready cube at the tail must progress");
+            when(((CubicServerLevel) fixture.level).cc_tryUnloadCubeEntities(any())).thenReturn(true);
+            processUnloads(fixture.access, () -> true);
+        }
+    }
+
+    @Test
     void closesAndReopensCubesAtDistinctVerticalCoordinates() throws Exception {
         CubePos below = CubePos.of(-3, -11, 5);
         CubePos above = CubePos.of(-3, 12, 5);
@@ -296,6 +414,50 @@ public class IntegrationTestCubePersistence extends BaseTest {
             assertEquals(Blocks.LAPIS_BLOCK.defaultBlockState(), full.getBlockState(sample(pos)));
             assertEquals(781, full.getInhabitedTime());
             assertFalse(full.isUnsaved());
+        }
+    }
+
+    @Test
+    void flushBatchesMoreThanOneWriteQueueAndIncludesPendingUnloadPoi() throws Exception {
+        List<CubePos> positions = new ArrayList<>();
+        CubePos unloading = CubePos.of(40, -313, 0);
+        BlockPos bedPos = unloading.asBlockPos(2, 8, 2);
+        var bed = Blocks.BED.pick(net.minecraft.world.item.DyeColor.RED).defaultBlockState()
+                .setValue(net.minecraft.world.level.block.AbstractBedBlock.PART, net.minecraft.world.level.block.state.properties.BedPart.HEAD);
+        try (Fixture first = open()) {
+            for (int index = 0; index < 40; index++) {
+                CubePos pos = CubePos.of(index, -313, 0);
+                positions.add(pos);
+                LevelCube cube = fullCube(first, pos, Blocks.LAPIS_BLOCK.defaultBlockState());
+                cube.setInhabitedTime(index + 100);
+                ChunkHolder holder = pendingHolder(cube);
+                when(holder.wasAccessibleSinceLastSave()).thenReturn(true);
+                when(holder.isReadyForSaving()).thenReturn(true);
+                first.access.cc_testVisibleChunkMap().put(cube.cc_getCloPos().asLong(), holder);
+            }
+            // Populate directly so POI becomes dirty only when processUnloads reconciles after the vanilla flushAll barrier.
+            ProtoCube cube = cube(first, unloading, Blocks.GOLD_BLOCK.defaultBlockState());
+            cube.getSection(Coords.blockToIndex(bedPos)).setBlockState(2, 8, 2, bed);
+            ChunkHolder holder = pendingHolder(cube);
+            long key = cube.cc_getCloPos().asLong();
+            first.access.cc_testPendingUnloads().put(key, holder);
+            first.access.cc_testScheduleUnload(key, holder);
+            first.access.cc_testSaveAllChunks(true);
+            assertEquals(41, cubeFiles().size());
+            var poi = ((io.github.opencubicchunks.cubicchunks.world.level.poi.CubicPoiManager) first.access.cc_testPoiManager()).cc_cubePoi();
+            assertFalse(poi.hasWork(), "Explicit flush must also complete POI dirtied by its pending-unload pass");
+        }
+        try (Fixture reopened = open()) {
+            for (int index = 0; index < positions.size(); index++) {
+                CubePos pos = positions.get(index);
+                ImposterProtoCube loaded = assertInstanceOf(ImposterProtoCube.class, reopened.load(CloPos.cube(pos)));
+                LevelCube cube = assertInstanceOf(LevelCube.class, loaded.cc_getWrappedClo());
+                assertEquals(Blocks.LAPIS_BLOCK.defaultBlockState(), cube.getBlockState(sample(pos)));
+                assertEquals(index + 100, cube.getInhabitedTime());
+            }
+            assertEquals(bed, reopened.load(CloPos.cube(unloading)).getBlockState(bedPos));
+            assertEquals(1, reopened.level.getPoiManager().getCountInRange(type -> true, bedPos, 0,
+                    net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.HAS_SPACE));
         }
     }
 
@@ -542,6 +704,32 @@ public class IntegrationTestCubePersistence extends BaseTest {
             assertInstanceOf(ProtoChunk.class, loaded);
             assertEquals(Blocks.EMERALD_BLOCK.defaultBlockState(), loaded.getBlockState(block));
             assertEquals(ChunkStatus.TERRAIN, loaded.getPersistedStatus());
+        }
+    }
+
+    @Test
+    void savingACleanCompatibilityColumnDoesNotDrainUnrelatedCubePoiWrites() throws Exception {
+        CubePos pos = CubePos.of(0, -313, 0);
+        BlockPos bell = pos.asBlockPos(2, 8, 2);
+        try (Fixture fixture = open()) {
+            var poiManager = fixture.access.cc_testPoiManager();
+            poiManager.add(bell, net.minecraft.world.entity.ai.village.poi.PoiTypes.forState(Blocks.BELL.defaultBlockState()).orElseThrow());
+            var poi = ((io.github.opencubicchunks.cubicchunks.world.level.poi.CubicPoiManager) poiManager).cc_cubePoi();
+            CubeStorage storage = CubeStorageBarrier.storage(io.github.opencubicchunks.cubicchunks.world.level.poi.CubePoiStorage.class, poi,
+                    "storage");
+            ProtoChunk column = new ProtoChunk(new ChunkPos(0, 0), UpgradeData.EMPTY, fixture.level, fixture.level.palettedContainerFactory(), null);
+            column.tryMarkSaved();
+            try (var barrier = new CubeStorageBarrier(storage)) {
+                assertTrue(poi.save(pos));
+                assertTimeout(Duration.ofSeconds(1), () -> assertFalse(fixture.access.cc_testSaveAsync((CloAccess) column)));
+                assertTrue(poi.hasWork(), "Saving a compatibility column must leave unrelated asynchronous POI writes queued");
+            }
+            fixture.access.cc_testSaveAllChunks(true);
+            assertFalse(poi.hasWork(), "Explicit world flush must still drain cubic POI");
+        }
+        try (Fixture reopened = open()) {
+            assertEquals(1, reopened.level.getPoiManager().getCountInRange(type -> true, bell, 0,
+                    net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.HAS_SPACE));
         }
     }
 
@@ -1855,10 +2043,11 @@ public class IntegrationTestCubePersistence extends BaseTest {
     }
 
     private static ChunkHolder pendingHolder(CubeAccess cube) {
+        CloPos pos = cube.cc_getCloPos();
         ChunkHolder holder = mock();
         when(holder.getSaveSyncFuture()).thenReturn(CompletableFuture.completedFuture(null));
         when(((GenerationCloHolder) holder).cc_getLatestClo()).thenReturn(cube);
-        when(((GenerationCloHolder) holder).cc_getCloPos()).thenReturn(cube.cc_getCloPos());
+        when(((GenerationCloHolder) holder).cc_getCloPos()).thenReturn(pos);
         return holder;
     }
 

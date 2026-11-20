@@ -58,6 +58,13 @@ public final class CubeSaveQueue<K> {
         return true;
     }
 
+    /** Explicit flush only: keep writes pipelined, waiting when a key or the bounded queue is already occupied. */
+    public void submitBlocking(K key, CompoundTag snapshot, Function<CompoundTag, CompletableFuture<Void>> writer, Runnable success, Runnable failed) {
+        while (!submit(key, snapshot, writer, success, failed)) {
+            awaitAll();
+        }
+    }
+
     public boolean contains(K key) {
         poll();
         return pending.containsKey(key);
