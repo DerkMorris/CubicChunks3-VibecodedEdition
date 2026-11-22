@@ -20,6 +20,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
     private final boolean reopen = Boolean.getBoolean("cubicchunks.smoke.reopen");
     private final boolean asyncSaves = Boolean.getBoolean("cubicchunks.smoke.asyncSaves");
     private final java.util.concurrent.CompletableFuture<Void> asyncProbe = new java.util.concurrent.CompletableFuture<>();
+    private final WorldHeightsProbe heights = Boolean.getBoolean("cubicchunks.smoke.heights") ? new WorldHeightsProbe() : null;
     private final DaylightProbe daylight = Boolean.getBoolean("cubicchunks.smoke.daylight") ? new DaylightProbe() : null;
     private final BiomeProbe biomes = Boolean.getBoolean("cubicchunks.smoke.biomes") ? new BiomeProbe() : null;
     private final StreamingProbe streaming = Boolean.getBoolean("cubicchunks.smoke.streaming") ? new StreamingProbe() : null;
@@ -86,6 +87,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
             CubicChunks.config().setVerticalViewDistance(descent == null && latency == null ? 2 : 8);
             client.options.renderDistance().set(descent != null || latency != null ? 15 : travel == null && streaming == null && turns == null ? 2 : 5);
             if ((descent != null || latency != null) && !reopen) DescentProbe.configureCreation();
+            if (heights != null) heights.configureCreation(reopen);
             client.options.simulationDistance().set(5);
             client.options.pauseOnLostFocus = false;
             String world = System.getProperty("cubicchunks.smoke.world", "cubic-entry");
@@ -146,6 +148,9 @@ public final class WorldEntryProbe implements ClientModInitializer {
             if (descent != null && ticks >= 120 && client.gui.screen() == null) {
                 descent.tick(client);
             }
+            if (heights != null && ticks >= 120 && client.gui.screen() == null) {
+                heights.tick(client, reopen);
+            }
             if (latency != null && ticks >= 120 && client.gui.screen() == null) {
                 latency.tick(client);
             }
@@ -179,7 +184,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
             if (raidBoss != null && ticks >= 160) {
                 raidBoss.tick(client);
             }
-            if (descent == null && latency == null && caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null && darkening == null
+            if (heights == null && descent == null && latency == null && caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null && darkening == null
                     && mobs == null && travel == null && daylight == null && biomes == null && gameplay == null && environment == null
                     && portals == null && raidBoss == null && weather == null && multiplayer == null
                     && ticks >= Integer.getInteger("cubicchunks.smoke.ticks", 200) && client.gui.screen() == null

@@ -6,11 +6,13 @@ import java.util.EnumMap;
 import com.electronwill.nightconfig.core.CommentedConfig;
 import com.electronwill.nightconfig.core.Config;
 import io.github.opencubicchunks.cubicchunks.CubicChunks;
+import io.github.opencubicchunks.cubicchunks.world.level.CubicBlockBounds;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.CaveParameter;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.DeepCaveSettings;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.HeightFormula;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.OreKind;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.OreRule;
+import io.github.opencubicchunks.cubicchunks.world.level.levelgen.WorldHeightSettings;
 import io.github.opencubicchunks.cubicchunks.platform.Platform;
 
 public class CommonConfig extends BaseConfig {
@@ -27,6 +29,9 @@ public class CommonConfig extends BaseConfig {
     private static final String SCALE = "generation.caveScale";
     private static final String OPENNESS = "generation.caveOpenness";
     private static final String ORES = "generation.oreFrequency";
+    private static final String CLOUD_HEIGHT = "generation.cloudHeight";
+    private static final String DEEPSLATE_START = "generation.deepslateStartY";
+    private static final String SKY_FADE_START = "generation.skyFadeStartY";
 
     private final CommentedConfig config;
 
@@ -51,6 +56,7 @@ public class CommonConfig extends BaseConfig {
         config.set(SCALE, defaults.scale());
         config.set(OPENNESS, defaults.openness());
         config.set(ORES, defaults.oreFrequency());
+        addHeightDefaults(config, defaults.heights());
         config.setComment(CAVES, "Generate caves below the native terrain floor in new cubic worlds.");
         config.setComment(SCALE, "Cave noise scale in blocks (24 to 160).");
         config.setComment(OPENNESS, "Cave openness (0 to 100).");
@@ -117,7 +123,40 @@ public class CommonConfig extends BaseConfig {
                 config.set(key, "");
             }
         }
-        return new DeepCaveSettings(config.get(CAVES), config.getInt(SCALE), config.getInt(OPENNESS), config.getInt(ORES), rules, curves);
+        return new DeepCaveSettings(config.get(CAVES), config.getInt(SCALE), config.getInt(OPENNESS), config.getInt(ORES), rules, curves,
+                readHeights());
+    }
+
+    private WorldHeightSettings readHeights() {
+        try {
+            return new WorldHeightSettings(readHeight(CLOUD_HEIGHT), readHeight(DEEPSLATE_START), readHeight(SKY_FADE_START));
+        } catch (IllegalArgumentException | ClassCastException exception) {
+            CubicChunks.LOGGER.warn("Invalid world heights in {}. Restoring height defaults.", FILE_NAME, exception);
+            writeHeights(config, WorldHeightSettings.DEFAULT);
+            return WorldHeightSettings.DEFAULT;
+        }
+    }
+
+    private int readHeight(String key) {
+        Object value = config.get(key);
+        if (!(value instanceof Number number) || number.doubleValue() != number.longValue()
+                || number.longValue() < CubicBlockBounds.MIN || number.longValue() > CubicBlockBounds.MAX) {
+            throw new IllegalArgumentException("Invalid height: " + key);
+        }
+        return number.intValue();
+    }
+
+    private static void addHeightDefaults(CommentedConfig config, WorldHeightSettings heights) {
+        writeHeights(config, heights);
+        config.setComment(CLOUD_HEIGHT, "Absolute cloud layer Y in new cubic Overworlds.");
+        config.setComment(DEEPSLATE_START, "Y at which stone starts transitioning to deepslate, over the eight blocks below it.");
+        config.setComment(SKY_FADE_START, "Sky, sun and clouds fade below this Y and are fully hidden 64 blocks lower. New cubic Overworlds only.");
+    }
+
+    private static void writeHeights(CommentedConfig config, WorldHeightSettings heights) {
+        config.set(CLOUD_HEIGHT, heights.cloudHeight());
+        config.set(DEEPSLATE_START, heights.deepslateStartY());
+        config.set(SKY_FADE_START, heights.skyFadeStartY());
     }
 
     private static String curveKey(CaveParameter parameter) {
@@ -129,6 +168,7 @@ public class CommonConfig extends BaseConfig {
         config.set(SCALE, settings.scale());
         config.set(OPENNESS, settings.openness());
         config.set(ORES, settings.oreFrequency());
+        writeHeights(config, settings.heights());
         for (var parameter : CaveParameter.values()) {
             var formula = settings.caveCurves().get(parameter);
             config.set(curveKey(parameter), formula == null ? "" : formula.text());

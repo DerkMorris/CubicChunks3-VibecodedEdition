@@ -24,10 +24,12 @@ final class ForgeNetwork {
     private ForgeNetwork() {}
 
     static void register() {
-        var builder = ChannelBuilder.named("cubicchunks:main").networkProtocolVersion(1).optional().payloadChannel();
+        var builder = ChannelBuilder.named("cubicchunks:main").networkProtocolVersion(2).optional().payloadChannel();
         var configuration = builder.protocol(NetworkProtocol.CONFIGURATION).clientbound();
         configuration.addMain(CCClientboundWorldModePacket.TYPE, CCClientboundWorldModePacket.STREAM_CODEC,
                 (packet, context) -> CubicWorldMode.clientOverworld = packet.cubicOverworld());
+        configuration.addMain(CCClientboundWorldHeightsPacket.TYPE, CCClientboundWorldHeightsPacket.STREAM_CODEC,
+                (packet, context) -> CubicWorldMode.clientHeights = packet.heights());
         var toClient = builder.protocol(NetworkProtocol.PLAY).clientbound();
         toClient.addMain(CCClientboundLevelCubeWithLightPacket.TYPE, CCClientboundLevelCubeWithLightPacket.STREAM_CODEC.cast(),
                 (packet, context) -> clientHandler.accept(packet));
@@ -75,6 +77,7 @@ final class ForgeNetwork {
             // Integrated-server connections share the mod set and skip Forge's remote channel negotiation.
             if (context.getConnection().isMemoryConnection() || CHANNEL.isRemotePresent(context.getConnection())) {
                 CHANNEL.send(new CCClientboundWorldModePacket(cubic), context.getConnection());
+                CHANNEL.send(CCClientboundWorldHeightsPacket.from(ServerLifecycleHooks.getCurrentServer().overworld()), context.getConnection());
             } else if (cubic) {
                 ((net.minecraft.server.network.ServerConfigurationPacketListenerImpl) context.getConnection().getPacketListener())
                         .disconnect(Component.literal("This cubic world requires Cubic Chunks for Minecraft 26.3."));

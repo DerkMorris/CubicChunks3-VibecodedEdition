@@ -8,10 +8,15 @@ public class CCNetworkHandler {
 
     public static void register() {
         PayloadTypeRegistry.clientboundConfiguration().register(CCClientboundWorldModePacket.TYPE, CCClientboundWorldModePacket.STREAM_CODEC);
+        PayloadTypeRegistry.clientboundConfiguration().register(CCClientboundWorldHeightsPacket.TYPE, CCClientboundWorldHeightsPacket.STREAM_CODEC);
         net.fabricmc.fabric.api.networking.v1.ServerConfigurationConnectionEvents.CONFIGURE.register((handler, server) -> {
             boolean cubic = ((io.github.opencubicchunks.cubicchunks.CanBeCubic) server.overworld()).cc_isCubic();
             if (net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking.canSend(handler, CCClientboundWorldModePacket.TYPE)) {
                 net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking.send(handler, new CCClientboundWorldModePacket(cubic));
+                if (net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking.canSend(handler, CCClientboundWorldHeightsPacket.TYPE)) {
+                    net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking.send(handler,
+                            CCClientboundWorldHeightsPacket.from(server.overworld()));
+                }
             } else if (cubic) {
                 handler.disconnect(net.minecraft.network.chat.Component.literal("This cubic world requires Cubic Chunks for Minecraft 26.3."));
             }

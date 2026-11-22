@@ -10,6 +10,7 @@ import io.github.opencubicchunks.cubicchunks.world.level.levelgen.DeepCaveSettin
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.HeightFormula;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.OreKind;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.OreRule;
+import io.github.opencubicchunks.cubicchunks.world.level.levelgen.WorldHeightSettings;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
@@ -28,7 +29,8 @@ public final class DeepCaveSettingsScreen extends Screen {
     private static final int BUTTON_HEIGHT = 20;
     private static final int ORE_ROW = 3;
     private static final int EDITOR_ROW = 4;
-    private static final int FOOTER_ROW = 5;
+    private static final int HEIGHTS_ROW = 5;
+    private static final int FOOTER_ROW = 6;
     private final Screen parent;
     private final Consumer<DeepCaveSettings> apply;
     private boolean enabled;
@@ -36,6 +38,7 @@ public final class DeepCaveSettingsScreen extends Screen {
     private int openness;
     private int ores;
     private Map<OreKind, OreRule> profiles;
+    private WorldHeightSettings heights;
     private final Map<CaveParameter, HeightFormula> curves = new EnumMap<>(CaveParameter.class);
 
     public DeepCaveSettingsScreen(Screen parent, DeepCaveSettings settings, Consumer<DeepCaveSettings> apply) {
@@ -47,6 +50,7 @@ public final class DeepCaveSettingsScreen extends Screen {
         openness = settings.openness();
         ores = settings.oreFrequency();
         profiles = settings.oreRules();
+        heights = settings.heights();
         curves.putAll(settings.caveCurves());
     }
 
@@ -56,7 +60,7 @@ public final class DeepCaveSettingsScreen extends Screen {
 
     @Override protected void init() {
         int x = (width - WIDTH) / 2;
-        int y = height / 2 - 2 * ROW;
+        int y = height / 2 - ORE_ROW * ROW;
         addRenderableWidget(CycleButton.<Boolean>builder(DeepCaveSettingsScreen::modeName, enabled).withValues(false, true).create(x, y, WIDTH,
                 BUTTON_HEIGHT, Component.translatable("cubicchunks.generation.mode"), (button, value) -> {
                     enabled = value;
@@ -70,9 +74,12 @@ public final class DeepCaveSettingsScreen extends Screen {
                 .builder(Component.translatable("cubicchunks.ores.title"),
                         button -> minecraft.gui.setScreen(new OreProfilesScreen(this, profiles, rules -> profiles = rules)))
                 .bounds(x, y + EDITOR_ROW * ROW, WIDTH, BUTTON_HEIGHT).build());
+        addRenderableWidget(Button.builder(Component.translatable("cubicchunks.heights.title"),
+                button -> minecraft.gui.setScreen(new WorldHeightSettingsScreen(this, heights, value -> heights = value)))
+                .bounds(x, y + HEIGHTS_ROW * ROW, WIDTH, BUTTON_HEIGHT).build());
         int half = WIDTH / 2;
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> {
-            apply.accept(new DeepCaveSettings(enabled, scale, openness, ores, profiles, curves));
+            apply.accept(new DeepCaveSettings(enabled, scale, openness, ores, profiles, curves, heights));
             onClose();
         }).bounds(x, y + FOOTER_ROW * ROW, half - 2, BUTTON_HEIGHT).build());
         addRenderableWidget(Button.builder(CommonComponents.GUI_CANCEL, button -> onClose())
@@ -100,7 +107,7 @@ public final class DeepCaveSettingsScreen extends Screen {
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-        graphics.centeredText(font, title, width / 2, height / 2 - 2 * ROW - ROW, -1);
+        graphics.centeredText(font, title, width / 2, height / 2 - ORE_ROW * ROW - ROW, -1);
     }
 
     private static final class IntSlider extends AbstractSliderButton {

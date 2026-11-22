@@ -12,6 +12,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class MixinClientConfigurationPacketListenerImpl {
     @Inject(method = "<init>", at = @At("RETURN"))
     private void cc_resetWorldMode(CallbackInfo ci) {
-        CubicWorldMode.clientOverworld = false;
+        CubicWorldMode.resetClient();
     }
 }

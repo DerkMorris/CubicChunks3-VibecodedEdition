@@ -6,6 +6,11 @@ import static io.github.opencubicchunks.smoke.ProbeSignals.require;
 import java.nio.file.Path;
 
 import io.github.opencubicchunks.cubicchunks.CanBeCubic;
+import io.github.opencubicchunks.cubicchunks.CubicChunks;
+import io.github.opencubicchunks.cubicchunks.client.multiplayer.CubicClientWorldSettings;
+import io.github.opencubicchunks.cubicchunks.world.level.CubicWorldMode;
+import io.github.opencubicchunks.cubicchunks.world.level.levelgen.DeepCaveSettings;
+import io.github.opencubicchunks.cubicchunks.world.level.levelgen.WorldHeightSettings;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
@@ -32,6 +37,7 @@ final class DedicatedProbeClient {
     private int ticks;
     private String survivalPhase = "";
     private SurvivalChecks.ClientChecks survival;
+    private ClientLevel verifiedHeightLevel;
 
     void tick(Minecraft client) {
         require(System.nanoTime() < deadline, "Dedicated client timeout role=" + role + " phase=" + signals.read("phase"));
@@ -50,6 +56,7 @@ final class DedicatedProbeClient {
             reconnected = true;
             return;
         }
+        verifyWorldHeights(client);
         String phase = signals.read("phase");
         if (primary && phase.startsWith("survival-")) {
             if (!phase.equals(survivalPhase)) {
@@ -129,8 +136,23 @@ final class DedicatedProbeClient {
     }
 
     private void connect(Minecraft client) {
+        if (Boolean.getBoolean("cubicchunks.smoke.heights")) {
+            CubicChunks.config().setDeepCaveSettings(DeepCaveSettings.CLASSIC);
+        }
         ConnectScreen.startConnecting(new TitleScreen(), client, new ServerAddress("127.0.0.1", port),
                 new ServerData("Cubic dedicated probe", "127.0.0.1:" + port, ServerData.Type.OTHER), false, null);
+    }
+
+    private void verifyWorldHeights(Minecraft client) {
+        if (!Boolean.getBoolean("cubicchunks.smoke.heights") || client.level == null || client.player == null || verifiedHeightLevel == client.level) {
+            return;
+        }
+        require(CubicChunks.config().deepCaveSettings().heights().equals(WorldHeightSettings.DEFAULT), "Client creation defaults were not reset");
+        require(CubicWorldMode.clientHeights.equals(TEST_HEIGHTS), "Configuration packet heights missing: " + CubicWorldMode.clientHeights);
+        require(CubicClientWorldSettings.heights(client.level).equals(TEST_HEIGHTS), "Rendering does not use the connected world's heights");
+        verifiedHeightLevel = client.level;
+        System.out.println("CC_DEDICATED_HEIGHTS role=" + role + " reopen=" + reopen
+                + " cloud=32000 deepslate=-96 skyFade=-48 realTcp=true localDefaultsIgnored=true reconnected=" + reconnected);
     }
 
     private static boolean ready(Minecraft client, int y) {

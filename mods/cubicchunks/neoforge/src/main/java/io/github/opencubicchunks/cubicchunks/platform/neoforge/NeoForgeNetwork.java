@@ -20,6 +20,7 @@ final class NeoForgeNetwork {
     static void register(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar("1").optional();
         registrar.configurationToClient(CCClientboundWorldModePacket.TYPE, CCClientboundWorldModePacket.STREAM_CODEC);
+        registrar.configurationToClient(CCClientboundWorldHeightsPacket.TYPE, CCClientboundWorldHeightsPacket.STREAM_CODEC);
         registrar.playToClient(CCClientboundLevelCubeWithLightPacket.TYPE, CCClientboundLevelCubeWithLightPacket.STREAM_CODEC);
         registrar.playToClient(CCClientboundCubeLightInvalidatePacket.TYPE, CCClientboundCubeLightInvalidatePacket.STREAM_CODEC);
         registrar.playToClient(CCClientboundCubeLightRevokePacket.TYPE, CCClientboundCubeLightRevokePacket.STREAM_CODEC);
@@ -59,6 +60,9 @@ final class NeoForgeNetwork {
                 boolean cubic = ((CanBeCubic) ServerLifecycleHooks.getCurrentServer().overworld()).cc_isCubic();
                 if (listener.hasChannel(CCClientboundWorldModePacket.TYPE)) {
                     sender.accept(new CCClientboundWorldModePacket(cubic));
+                    if (listener.hasChannel(CCClientboundWorldHeightsPacket.TYPE)) {
+                        sender.accept(CCClientboundWorldHeightsPacket.from(ServerLifecycleHooks.getCurrentServer().overworld()));
+                    }
                 } else if (cubic) {
                     listener.disconnect(Component.literal("This cubic world requires Cubic Chunks for Minecraft 26.3."));
                     return;

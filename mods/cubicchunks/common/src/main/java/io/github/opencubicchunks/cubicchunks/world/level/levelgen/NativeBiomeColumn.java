@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.annotation.Nullable;
+
 import io.github.opencubicchunks.cubicchunks.world.level.cube.CubeAccess;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.ProtoCube;
 import it.unimi.dsi.fastutil.shorts.ShortArrayList;
@@ -29,7 +31,7 @@ final class NativeBiomeColumn {
     private final List<CompoundTag> generatedEntities;
     private final Map<BlockPos, CompoundTag> entities = new HashMap<>();
 
-    NativeBiomeColumn(ServerLevel level, ProtoChunk chunk) {
+    NativeBiomeColumn(ServerLevel level, ProtoChunk chunk, @Nullable DeepslateStrata strata) {
         firstSection = chunk.getMinSectionY();
         sections = chunk.getSections();
         postProcessing = chunk.getPostProcessing();
@@ -42,12 +44,12 @@ final class NativeBiomeColumn {
             }
         }
         if (level.getChunkSource().getGenerator() instanceof NoiseBasedChunkGenerator) {
-            openBottom();
+            openBottom(chunk, strata);
         }
     }
 
     // The cubic Overworld continues below the native noise volume.
-    private void openBottom() {
+    private void openBottom(ProtoChunk chunk, @Nullable DeepslateStrata strata) {
         var bottom = sections[0];
         if (!bottom.maybeHas(state -> state.is(Blocks.BEDROCK))) {
             return;
@@ -56,7 +58,9 @@ final class NativeBiomeColumn {
             for (int x = 0; x < SectionPos.SECTION_SIZE; x++) {
                 for (int z = 0; z < SectionPos.SECTION_SIZE; z++) {
                     if (bottom.getBlockState(x, y, z).is(Blocks.BEDROCK)) {
-                        bottom.setBlockState(x, y, z, Blocks.DEEPSLATE.defaultBlockState(), false);
+                        var replacement = strata == null ? Blocks.DEEPSLATE
+                                : strata.rock(chunk.getPos().getMinBlockX() + x, chunk.getMinY() + y, chunk.getPos().getMinBlockZ() + z);
+                        bottom.setBlockState(x, y, z, replacement.defaultBlockState(), false);
                     }
                 }
             }

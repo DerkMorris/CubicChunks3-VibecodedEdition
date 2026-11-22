@@ -11,6 +11,9 @@ import io.github.opencubicchunks.cc_core.api.CubePos;
 import io.github.opencubicchunks.cubicchunks.CanBeCubic;
 import io.github.opencubicchunks.cubicchunks.CubicChunks;
 import io.github.opencubicchunks.cubicchunks.world.level.CubicLevelReader;
+import io.github.opencubicchunks.cubicchunks.world.level.CubicWorldData;
+import io.github.opencubicchunks.cubicchunks.world.level.levelgen.DeepCaveSettings;
+import io.github.opencubicchunks.cubicchunks.world.level.levelgen.WorldHeightSettings;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -37,6 +40,7 @@ public final class DedicatedProbeServer implements ModInitializer {
     static final int LOWER = -32000;
     static final String ONE = "CCSurvivalOne";
     static final String TWO = "CCSurvivalTwo";
+    static final WorldHeightSettings TEST_HEIGHTS = new WorldHeightSettings(32000, -96, -48);
 
     static BlockPos marker(int y) {
         return new BlockPos(2, y, 0);
@@ -80,6 +84,11 @@ public final class DedicatedProbeServer implements ModInitializer {
         signals = new ProbeSignals(Path.of(System.getProperty("cubicchunks.smoke.networkDirectory")));
         CubicChunks.config().setGenerateNewWorldsAsCC(!reopen);
         CubicChunks.config().setVerticalViewDistance(2);
+        if (Boolean.getBoolean("cubicchunks.smoke.heights")) {
+            var defaults = DeepCaveSettings.CLASSIC;
+            CubicChunks.config().setDeepCaveSettings(new DeepCaveSettings(defaults.enabled(), defaults.scale(), defaults.openness(),
+                    defaults.oreFrequency(), defaults.oreRules(), defaults.caveCurves(), reopen ? WorldHeightSettings.DEFAULT : TEST_HEIGHTS));
+        }
         deadline = System.nanoTime() + java.time.Duration.ofMinutes(25).toNanos();
         ServerLifecycleEvents.SERVER_STARTED.register(this::started);
         ServerTickEvents.END_SERVER_TICK.register(this::tick);
@@ -88,6 +97,7 @@ public final class DedicatedProbeServer implements ModInitializer {
     private void started(MinecraftServer server) {
         require(server.isDedicatedServer(), "Probe accidentally started an integrated server");
         require(((CanBeCubic) server.overworld()).cc_isCubic(), "Dedicated world is not cubic");
+        verifyWorldHeights(server.overworld());
         server.overworld().getGameRules().set(GameRules.SPAWN_MOBS, false, server);
         server.overworld().getGameRules().set(GameRules.KEEP_INVENTORY, false, server);
         if (!reopen) {
@@ -107,6 +117,18 @@ public final class DedicatedProbeServer implements ModInitializer {
         }
         signals.signal(reopen ? "server-reopened" : "server-ready");
         System.out.println("CC_DEDICATED_STARTED dedicated=true reopen=" + reopen + " testBypass=false");
+    }
+
+    private void verifyWorldHeights(ServerLevel level) {
+        if (!Boolean.getBoolean("cubicchunks.smoke.heights")) {
+            return;
+        }
+        var saved = ((CubicWorldData) level.getLevelData()).cc_deepCaveSettings().heights();
+        require(saved.equals(TEST_HEIGHTS), "Saved dedicated world heights lost: " + saved);
+        require(CubicChunks.config().deepCaveSettings().heights().equals(reopen ? WorldHeightSettings.DEFAULT : TEST_HEIGHTS),
+                "Dedicated height creation defaults were not configured independently of the saved world");
+        System.out.println("CC_DEDICATED_HEIGHTS role=server reopen=" + reopen
+                + " cloud=32000 deepslate=-96 skyFade=-48 saved=true creationDefaultsReset=" + reopen);
     }
 
     private void tick(MinecraftServer server) {

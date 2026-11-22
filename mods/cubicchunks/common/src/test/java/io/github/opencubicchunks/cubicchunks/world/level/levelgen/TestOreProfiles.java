@@ -77,11 +77,11 @@ class TestOreProfiles extends BaseTest {
                             var state = section.getBlockState(x, y, z);
                             assertEquals(state, same.getBlockState(x, y, z));
                             assertFalse(state.isAir());
-                            if (state.is(Blocks.DIAMOND_ORE)) {
+                            if (state.is(Blocks.DEEPSLATE_DIAMOND_ORE)) {
                                 diamonds++;
                                 assertTrue(diamond.percent(16 * sy + y) > 0);
                             } else {
-                                assertTrue(state.is(Blocks.STONE));
+                                assertTrue(state.is(Blocks.DEEPSLATE));
                             }
                         }
                     }

@@ -27,10 +27,13 @@ import net.fabricmc.fabric.api.client.rendering.v1.PictureInPictureRendererRegis
 public final class CubicChunksFabricClient implements ClientModInitializer {
     @Override public void onInitializeClient() {
         net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationConnectionEvents.INIT
-                .register((handler, client) -> io.github.opencubicchunks.cubicchunks.world.level.CubicWorldMode.clientOverworld = false);
+                .register((handler, client) -> io.github.opencubicchunks.cubicchunks.world.level.CubicWorldMode.resetClient());
         net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworking.registerGlobalReceiver(
                 io.github.opencubicchunks.cubicchunks.network.CCClientboundWorldModePacket.TYPE,
                 (packet, context) -> io.github.opencubicchunks.cubicchunks.world.level.CubicWorldMode.clientOverworld = packet.cubicOverworld());
+        net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworking.registerGlobalReceiver(
+                io.github.opencubicchunks.cubicchunks.network.CCClientboundWorldHeightsPacket.TYPE,
+                (packet, context) -> io.github.opencubicchunks.cubicchunks.world.level.CubicWorldMode.clientHeights = packet.heights());
         new EntityDiagnostics().register();
         PictureInPictureRendererRegistry.register(context -> new WorldLoadingCubeStatusesRenderer());
         // Fabric invokes these handlers on the render thread, where client world access is safe.

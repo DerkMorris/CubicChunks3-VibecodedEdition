@@ -3,7 +3,8 @@ param(
     [ValidateSet('network', 'survival', 'mechanics', 'events', 'persistence', 'all')][string]$Scenario = 'all',
     [int]$Port = 25570,
     [int]$TimeoutSeconds = 1500,
-    [switch]$AcceptEula
+    [switch]$AcceptEula,
+    [switch]$WorldHeights
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,6 +57,7 @@ try {
                 '-Dcubicchunks.smoke.dedicatedReopen=' + ($round -eq 'reopen').ToString().ToLowerInvariant()
             )
             $arguments += $(if ($isServer) { '-Dcubicchunks.smoke.dedicatedServer=true' } else { '-Dcubicchunks.smoke.dedicatedClient=' + $role })
+            if ($WorldHeights) { $arguments += '-Dcubicchunks.smoke.heights=true' }
             $arguments += @('-cp', $launch.classpath, $launch.mainClass)
             $programArguments = @($launch.args)
             for ($index = 0; $index -lt $programArguments.Count; $index++) {
@@ -99,8 +101,15 @@ try {
                       elseif ($round -eq 'initial') { 'CC_DEDICATED_COMPLETE restartReady=true' }
                       else { 'CC_DEDICATED_REOPEN_COMPLETE' }
             if ($entry.Process.ExitCode -ne 0 -or $log -notmatch [regex]::Escape($marker)) { throw "Missing successful $round $($entry.Role) completion: $($entry.Log)" }
+            if ($WorldHeights) {
+                $heightMarker = 'CC_DEDICATED_HEIGHTS role=' + $entry.Role + ' reopen=' + ($round -eq 'reopen').ToString().ToLowerInvariant() + ' cloud=32000 deepslate=-96 skyFade=-48'
+                if ($log -notmatch [regex]::Escape($heightMarker)) { throw "Missing world height verification for $round $($entry.Role): $($entry.Log)" }
+            }
         }
         Write-Output "CC_DEDICATED_ROUND_COMPLETE round=$round processes=3 scenario=$Scenario"
+    }
+    if ($WorldHeights) {
+        Write-Output 'CC_DEDICATED_HEIGHTS_VERIFIED clients=2 dedicated=true freshServerReopen=true cloud=32000 deepslate=-96 skyFade=-48'
     }
     Write-Output "CC_DEDICATED_PROCESSES_COMPLETE clients=2 dedicated=true freshServerReopen=true scenario=$Scenario reports=$reportPath"
 } finally {

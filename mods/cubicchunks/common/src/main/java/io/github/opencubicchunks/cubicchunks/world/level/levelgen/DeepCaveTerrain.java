@@ -3,6 +3,8 @@ package io.github.opencubicchunks.cubicchunks.world.level.levelgen;
 import java.util.Arrays;
 import java.util.stream.DoubleStream;
 
+import javax.annotation.Nullable;
+
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -32,6 +34,7 @@ final class DeepCaveTerrain {
     private final long seed;
     final OreDistribution ores;
     private final DeepCaveSettings settings;
+    private final @Nullable DeepslateStrata deepslate;
     private final double[] scaleBands;
     private final PalettedContainerFactory palettes;
     private final PerlinNoise rooms;
@@ -41,7 +44,12 @@ final class DeepCaveTerrain {
     private final LoadingCache<SectionPos, LevelChunkSection> sections;
 
     DeepCaveTerrain(long seed, DeepCaveSettings settings, PalettedContainerFactory palettes) {
+        this(seed, settings, palettes, new DeepslateStrata(seed, settings.heights().deepslateStartY()));
+    }
+
+    DeepCaveTerrain(long seed, DeepCaveSettings settings, PalettedContainerFactory palettes, @Nullable DeepslateStrata deepslate) {
         this.seed = seed;
+        this.deepslate = deepslate;
         ores = new OreDistribution(seed, settings.oreRules());
         this.settings = settings;
         var scale = settings.caveCurves().get(CaveParameter.SCALE);
@@ -70,6 +78,9 @@ final class DeepCaveTerrain {
             NativeBiomeTerrain.fillStone(section);
         } else {
             fillCaves(section, pos);
+        }
+        if (deepslate != null && (!settings.enabled() || deepslate.custom())) {
+            deepslate.apply(section, pos.minBlockX(), pos.minBlockY(), pos.minBlockZ());
         }
         ores.place(section, pos.minBlockX(), pos.minBlockY(), pos.minBlockZ());
         return section;

@@ -42,6 +42,7 @@ public final class CubicChunksNeoForgeClient {
     @SubscribeEvent
     public static void register(RegisterClientPayloadHandlersEvent event) {
         event.register(CCClientboundWorldModePacket.TYPE, (packet, context) -> CubicWorldMode.clientOverworld = packet.cubicOverworld());
+        event.register(CCClientboundWorldHeightsPacket.TYPE, (packet, context) -> CubicWorldMode.clientHeights = packet.heights());
         event.register(CCClientboundLevelCubeWithLightPacket.TYPE, (packet, context) -> new CCClientboundLevelCubeWithLightPacket.Handler()
                 .receive(packet, new ClientPacketContext(Minecraft.getInstance(), Minecraft.getInstance().player)));
         event.register(CCClientboundCubeLightInvalidatePacket.TYPE, (packet, context) -> new CCClientboundCubeLightInvalidatePacket.Handler()

@@ -9,7 +9,8 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 /** Creation defaults are copied to level.dat; a saved world owns its generation settings. */
 public record DeepCaveSettings(
-        boolean enabled, int scale, int openness, int oreFrequency, Map<OreKind, OreRule> oreRules, Map<CaveParameter, HeightFormula> caveCurves
+        boolean enabled, int scale, int openness, int oreFrequency, Map<OreKind, OreRule> oreRules, Map<CaveParameter, HeightFormula> caveCurves,
+        WorldHeightSettings heights
 ) {
 
     public static final int MIN_SCALE = 24;
@@ -23,7 +24,8 @@ public record DeepCaveSettings(
                     Codec.intRange(0, PERCENT).fieldOf("ore_frequency").forGetter(DeepCaveSettings::oreFrequency),
                     Codec.unboundedMap(OreKind.CODEC, OreRule.CODEC).optionalFieldOf("ore_rules", Map.of()).forGetter(DeepCaveSettings::oreRules),
                     Codec.unboundedMap(CaveParameter.CODEC, HeightFormula.CODEC).optionalFieldOf("cave_curves", Map.of())
-                            .forGetter(DeepCaveSettings::caveCurves))
+                            .forGetter(DeepCaveSettings::caveCurves),
+                    WorldHeightSettings.CODEC.optionalFieldOf("world_heights", WorldHeightSettings.DEFAULT).forGetter(DeepCaveSettings::heights))
                     .apply(instance, DeepCaveSettings::new));
 
     public DeepCaveSettings(boolean enabled, int scale, int openness, int oreFrequency) {
@@ -34,7 +36,13 @@ public record DeepCaveSettings(
         this(enabled, scale, openness, oreFrequency, oreRules, Map.of());
     }
 
+    public DeepCaveSettings(boolean enabled, int scale, int openness, int oreFrequency, Map<OreKind, OreRule> oreRules,
+            Map<CaveParameter, HeightFormula> caveCurves) {
+        this(enabled, scale, openness, oreFrequency, oreRules, caveCurves, WorldHeightSettings.DEFAULT);
+    }
+
     public DeepCaveSettings {
+        java.util.Objects.requireNonNull(heights);
         var ordered = new EnumMap<OreKind, OreRule>(OreKind.class);
         oreRules.forEach((kind, rule) -> ordered.put(kind, java.util.Objects.requireNonNull(rule)));
         oreRules = Collections.unmodifiableMap(ordered);

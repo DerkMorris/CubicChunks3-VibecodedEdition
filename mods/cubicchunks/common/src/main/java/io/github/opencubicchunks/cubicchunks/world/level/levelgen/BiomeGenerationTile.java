@@ -37,18 +37,20 @@ final class BiomeGenerationTile {
     private final Cache<ChunkPos, UndecoratedColumn> terrain;
     private final NativeStructureLayout structures;
     private final @Nullable DeepCaveTerrain deep;
+    private final @Nullable DeepslateStrata strata;
     private final int startX;
     private final int startZ;
     private final Map<ChunkPos, HolderChunk> chunks = new HashMap<>();
 
     BiomeGenerationTile(
             ServerLevel level, ChunkPos tile, LoadingCache<ChunkPos, UndecoratedColumn> biomes, Cache<ChunkPos, UndecoratedColumn> terrain,
-            NativeStructureLayout structures, @Nullable DeepCaveTerrain deep
+            NativeStructureLayout structures, @Nullable DeepCaveTerrain deep, @Nullable DeepslateStrata strata
     ) {
         this.level = level;
         this.terrain = terrain;
         this.structures = structures;
         this.deep = deep;
+        this.strata = strata;
         this.biomes = biomes;
         startX = tile.x() * WIDTH;
         startZ = tile.z() * WIDTH;
@@ -62,7 +64,7 @@ final class BiomeGenerationTile {
         forEach(2, this::buildTerrain);
         forEach(1, this::decorate);
         Map<ChunkPos, NativeBiomeColumn> result = new HashMap<>();
-        forEach(0, (x, z) -> result.put(new ChunkPos(x, z), new NativeBiomeColumn(level, chunk(x, z))));
+        forEach(0, (x, z) -> result.put(new ChunkPos(x, z), new NativeBiomeColumn(level, chunk(x, z), strata)));
         return Map.copyOf(result);
     }
 
@@ -96,6 +98,9 @@ final class BiomeGenerationTile {
         if (deep != null) {
             deep.blendFloor(chunk);
             deep.ores.applyToNativeTerrain(chunk);
+        }
+        if (strata != null) {
+            strata.applyNative(chunk);
         }
         Heightmap.primeHeightmaps(chunk, ChunkStatus.FINAL_HEIGHTMAPS);
         chunk.setPersistedStatus(ChunkStatus.TERRAIN);

@@ -98,6 +98,7 @@ if (project.hasProperty('worldSmoke')) {
             vmArg "-Dcubicchunks.smoke.latency=${project.findProperty('smokeLatency') ?: ''}"
             vmArg "-Dcubicchunks.smoke.oreProfiles=${project.hasProperty('smokeOreProfiles')}"
             vmArg "-Dcubicchunks.smoke.caveCurves=${project.hasProperty('smokeCaveCurves')}"
+            vmArg "-Dcubicchunks.smoke.heights=${project.hasProperty('smokeHeights')}"
             vmArg "-Dcubicchunks.smoke.deepCaves=${project.hasProperty('smokeDeepCaves')}"
             vmArg "-Dcubicchunks.smoke.structures=${project.hasProperty('smokeStructures')}"
             vmArg "-Dcubicchunks.smoke.biomes=${project.hasProperty('smokeBiomes')}"

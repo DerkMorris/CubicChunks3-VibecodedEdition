@@ -47,5 +47,13 @@
   "cubicchunks.ores.nativeInfo": "Select Custom formula to edit this ore.",
   "cubicchunks.ores.chance": "Vein center chance per 12×12×12 cell",
   "cubicchunks.ores.helpTitle": "Ore distribution formulas",
-  "cubicchunks.ores.help": "y is absolute block height. The result is a percent chance (0–100) of a vein center per 12×12×12 cell. Min Y and Max Y are inclusive. No ore is placed at zero chance, even at a vein edge. Veins replace rock only.\n\nUse +  -  *  /  ^  ( ) and comparisons <  <=  >  >=  ==  !=. Functions: min(a,b), max(a,b), abs(a), sin(a), cos(a), clamp(a,min,max), if(condition,yes,no). Use a decimal point. Non-finite results count as 0%.\n\nBy points: curve(-1000,40,-600,16,-64,0). Heights must increase. Values interpolate linearly, then stay constant outside the endpoints.\n\nExample: clamp((-64-y)*40/936,0,40). Chance grows from 0% at −64 to 40% at −1000 and stays there. Set Min Y to −1000 to stop the ore below that level. Graph limits only change the preview."
+  "cubicchunks.ores.help": "y is absolute block height. The result is a percent chance (0–100) of a vein center per 12×12×12 cell. Min Y and Max Y are inclusive. No ore is placed at zero chance, even at a vein edge. Veins replace rock only.\n\nUse +  -  *  /  ^  ( ) and comparisons <  <=  >  >=  ==  !=. Functions: min(a,b), max(a,b), abs(a), sin(a), cos(a), clamp(a,min,max), if(condition,yes,no). Use a decimal point. Non-finite results count as 0%.\n\nBy points: curve(-1000,40,-600,16,-64,0). Heights must increase. Values interpolate linearly, then stay constant outside the endpoints.\n\nExample: clamp((-64-y)*40/936,0,40). Chance grows from 0% at −64 to 40% at −1000 and stays there. Set Min Y to −1000 to stop the ore below that level. Graph limits only change the preview.",
+  "cubicchunks.heights.title": "World heights",
+  "cubicchunks.heights.cloud": "Cloud height (Y)",
+  "cubicchunks.heights.cloud.info": "Height of the cloud layer in the cubic Overworld.",
+  "cubicchunks.heights.deepslate": "Deepslate starts at Y",
+  "cubicchunks.heights.deepslate.info": "Stone gradually changes to deepslate over the eight blocks below this height. Applies to newly generated terrain.",
+  "cubicchunks.heights.skyFade": "Sky fading starts at Y",
+  "cubicchunks.heights.skyFade.info": "Below this height, the sky, sun, moon, stars and clouds gradually fade out. They are fully hidden %s blocks lower.",
+  "cubicchunks.heights.invalid": "Enter whole numbers from %s to %s."
 }
