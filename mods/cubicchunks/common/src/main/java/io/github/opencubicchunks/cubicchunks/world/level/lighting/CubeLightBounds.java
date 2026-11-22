@@ -8,6 +8,7 @@ import io.github.opencubicchunks.cc_core.api.CubePos;
 import io.github.opencubicchunks.cc_core.api.CubicConstants;
 import io.github.opencubicchunks.cc_core.utils.Coords;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.lighting.LightEngine;
 
 /** Inclusive cube bounds for one bounded lighting calculation. Limits are checked before any voxel allocation. */
 public record CubeLightBounds(CubePos min, CubePos max) {
@@ -51,6 +52,14 @@ public record CubeLightBounds(CubePos min, CubePos max) {
 
     public boolean contains(BlockPos pos) {
         return contains(CubePos.of(Coords.blockToCube(pos.getX()), Coords.blockToCube(pos.getY()), Coords.blockToCube(pos.getZ())));
+    }
+
+    /** Exact inclusive block footprint read by the world solver for this result cube. */
+    public static boolean solverIncludes(CubePos center, BlockPos block) {
+        int halo = LightEngine.MAX_LEVEL;
+        return block.getX() >= center.minCubeX() - halo && block.getX() <= center.maxCubeX() + halo
+                && block.getY() >= center.minCubeY() - halo && block.getY() <= center.maxCubeY() + halo
+                && block.getZ() >= center.minCubeZ() - halo && block.getZ() <= center.maxCubeZ() + halo;
     }
 
     public int cubeCount() {

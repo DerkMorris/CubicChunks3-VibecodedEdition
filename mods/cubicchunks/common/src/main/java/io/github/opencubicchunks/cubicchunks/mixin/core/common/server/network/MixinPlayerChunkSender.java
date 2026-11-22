@@ -3,9 +3,10 @@ package io.github.opencubicchunks.cubicchunks.mixin.core.common.server.network;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
-import java.util.function.ToIntFunction;
 
+import com.google.common.collect.Comparators;
 import io.github.notstirred.dasm.api.annotations.Dasm;
 import io.github.notstirred.dasm.api.annotations.redirect.redirects.AddMethodToSets;
 import io.github.notstirred.dasm.api.annotations.redirect.redirects.AddTransformToSets;
@@ -33,15 +34,14 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.PlayerChunkSender;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.chunk.LevelChunk;
-import org.spongepowered.asm.mixin.Dynamic;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Dasm(value = ChunkToCloSet.class, target = @Ref(PlayerChunkSender.class))
@@ -71,6 +71,8 @@ public class MixinPlayerChunkSender implements CubeEntityTrackingSender {
     @Shadow private float desiredChunksPerTick;
 
     @Shadow private float batchQuota;
+
+    @Shadow @Final private boolean memoryConnection;
 
     @Shadow @Final private LongSet pendingChunks;
 
@@ -168,16 +170,16 @@ public class MixinPlayerChunkSender implements CubeEntityTrackingSender {
         // net.neoforged.neoforge.event.EventHooks.fireChunkSent(packetListener.player, chunk, level);
     }
 
-    @TransformFromMethod(value = "collectChunksToSend(Lnet/minecraft/server/level/ChunkMap;Lnet/minecraft/world/level/ChunkPos;)Ljava/util/List;")
-    private native List<LevelClo> cc_collectChunksToSend(ChunkMap chunkMap, CloPos cloPos);
-
-    // Send supporting columns before cubes, then prioritize the positions nearest the player within each group.
-    // Patched Minecraft is recompiled by FML; the two branches can appear in a different bytecode order.
-    @Dynamic @Redirect(method = "cc_collectChunksToSend", at = @At(value = "INVOKE", target = "Ljava/util/Comparator;comparingInt(Ljava/util/function/ToIntFunction;)Ljava/util/Comparator;"), require = 2)
-    private <T> Comparator<T> cc_onCollectChunksToSend_columnFirst(ToIntFunction<T> keyExtractor) {
-        return Comparator.<T>comparingInt(value -> {
-            boolean column = value instanceof Long packed ? CloPos.isChunk(packed) : ((LevelClo) value).cc_getCloPos().isChunk();
-            return column ? 0 : 1;
-        }).thenComparingInt(keyExtractor);
+    /** Limit ready payloads, so a nearby cube awaiting light cannot hold a network client's whole batch. */
+    private List<LevelClo> cc_collectChunksToSend(ChunkMap chunkMap, CloPos center) {
+        var ready = this.pendingChunks.longStream().mapToObj(((CubicChunkMap) chunkMap)::cc_getChunkToSend).filter(Objects::nonNull);
+        Comparator<LevelClo> order = Comparator.<LevelClo>comparingInt(clo -> clo.cc_getCloPos().isChunk() ? 0 : 1)
+                .thenComparingInt(clo -> center.distanceSquared(clo.cc_getCloPos()));
+        List<LevelClo> selected = this.memoryConnection ? ready.sorted(order).toList()
+                : ready.collect(Comparators.least(Mth.floor(this.batchQuota), order));
+        for (LevelClo clo : selected) {
+            this.pendingChunks.remove(clo.cc_getCloPos().asLong());
+        }
+        return selected;
     }
 }

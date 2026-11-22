@@ -18,6 +18,16 @@ public interface CubeLightProvider {
 
     default void cc_onCubeBlockDataChanged(CubeAccess cube) {}
 
+    /** True only after the changed section data is visible; false also covers invalidation before bulk replacement. */
+    default void cc_onCubeBlockDataChanged(CubeAccess cube, boolean mutationComplete) {
+        cc_onCubeBlockDataChanged(cube);
+    }
+
+    /** A completed single-cell write, before later heightmap or section-status callbacks can read lighting. */
+    default void cc_onCubeBlockDataChanged(CubeAccess cube, BlockPos changedCell) {
+        cc_onCubeBlockDataChanged(cube, true);
+    }
+
     /** A single changed cell, after the revision hook. Clients can update its visible light before building geometry. */
     default void cc_onCubeLightCellChanged(CubeAccess cube, BlockPos pos, BlockState previous) {}
 }

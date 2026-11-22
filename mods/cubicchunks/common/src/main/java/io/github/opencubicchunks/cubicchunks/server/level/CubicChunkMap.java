@@ -3,6 +3,8 @@ package io.github.opencubicchunks.cubicchunks.server.level;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
+import javax.annotation.Nullable;
+
 import io.github.opencubicchunks.cc_core.api.CubePos;
 import io.github.opencubicchunks.cubicchunks.world.level.chunklike.LevelClo;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.LevelCube;
@@ -23,6 +25,9 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 public interface CubicChunkMap extends CubeLightProvider {
+    /** Returns a currently sendable column or fully lit cube without loading it. */
+    @Nullable LevelClo cc_getChunkToSend(long cloPos);
+
     void cc_forEachBlockTickingClo(Consumer<LevelClo> consumer);
 
     /**

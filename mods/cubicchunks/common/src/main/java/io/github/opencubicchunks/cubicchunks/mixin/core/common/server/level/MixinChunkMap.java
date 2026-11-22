@@ -309,10 +309,22 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
     }
 
     @Override public void cc_onCubeBlockDataChanged(CubeAccess cube) {
+        cc_onCubeBlockDataChanged(cube, false);
+    }
+
+    @Override public void cc_onCubeBlockDataChanged(CubeAccess cube, boolean mutationComplete) {
         ((io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnSource) this).cc_columnChanged(cube);
         this.cc_validateCubeLighting();
         if (!cc_lightingClosed && mainThreadExecutor.isSameThread() && cc_worldLights != null) {
-            cc_worldLights.changed(cube);
+            cc_worldLights.changed(cube, mutationComplete);
+        }
+    }
+
+    @Override public void cc_onCubeBlockDataChanged(CubeAccess cube, BlockPos changedCell) {
+        ((io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnSource) this).cc_columnChanged(cube);
+        this.cc_validateCubeLighting();
+        if (!cc_lightingClosed && mainThreadExecutor.isSameThread() && cc_worldLights != null) {
+            cc_worldLights.changedCell(cube, changedCell);
         }
     }
 
@@ -1202,6 +1214,13 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
     }
     // endregion
 
+    /** Server options use 16-block sections; both player tickets and the tracking view must use the same cube radius. */
+    @WrapOperation(method = "setServerViewDistance", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ChunkMap$DistanceManager;updatePlayerTickets(I)V"))
+    private void cc_playerTicketRadius(ChunkMap.DistanceManager manager, int sectionDistance, Operation<Void> original) {
+        // This also runs in ChunkMap's constructor, before its DistanceManager is marked cubic.
+        original.call(manager, ((CanBeCubic) level).cc_isCubic() ? Coords.sectionToCubeRenderDistance(sectionDistance) : sectionDistance);
+    }
+
     // region [cc_applyChunkTrackingView dasm + mixin]
     @AddTransformToSets(ChunkToCloSet.ChunkMap_redirects.class)
     @TransformFromMethod("applyChunkTrackingView(Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/server/level/ChunkTrackingView;)V")
@@ -1277,6 +1296,7 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
         cc_collectWorldLightSources(pendingUnloads.values(), sources);
         cc_collectWorldLightSources(updatingChunkMap.values(), sources);
         List<CubePos> targets = new ArrayList<>();
+        Set<CubePos> firstDeliveries = new HashSet<>();
         var distances = new it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap<CubePos>();
         sources.forEach((pos, cube) -> {
             if (cube instanceof LevelCube && cc_findLightingSource(pos) != null) {
@@ -1284,11 +1304,26 @@ public abstract class MixinChunkMap extends MixinChunkStorage implements Generat
                 if (Double.isFinite(distance)) {
                     distances.put(pos, distance);
                     targets.add(pos);
+                    if (cc_needsInitialCubeDelivery(pos)) {
+                        firstDeliveries.add(pos);
+                    }
                 }
             }
         });
         targets.sort(java.util.Comparator.comparingDouble(distances::getDouble));
-        cc_worldLights.tick(sources, targets);
+        cc_worldLights.tick(sources, targets, firstDeliveries);
+    }
+
+    @Unique
+    private boolean cc_needsInitialCubeDelivery(CubePos pos) {
+        for (ServerPlayer player : level.players()) {
+            if (((CCServerPlayer) player).cc_getCloTrackingView().cc_contains(pos.getX(), pos.getY(), pos.getZ())
+                    && !((io.github.opencubicchunks.cubicchunks.server.network.CubeEntityTrackingSender) player.connection.chunkSender)
+                    .cc_hasSentEntityCube(level, pos)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Unique

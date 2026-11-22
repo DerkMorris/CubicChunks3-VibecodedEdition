@@ -62,8 +62,8 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.gameevent.EuclideanGameEventListenerRegistry;
 import net.minecraft.world.level.gameevent.GameEventListenerRegistry;
 import net.minecraft.world.level.levelgen.Heightmap;
-import net.minecraft.world.level.levelgen.blending.BlendingData;
 import net.minecraft.world.level.lighting.LightEngine;
+import net.minecraft.world.level.levelgen.blending.BlendingData;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.storage.TagValueInput;
@@ -214,10 +214,7 @@ public class LevelCube extends CubeAccess implements LevelClo {
                 return null;
             } else {
                 var block = state.getBlock();
-                this.cc_updateHeightmaps(pos, state);
-                this.cc_onSectionEmptinessChanged(pos, wasOnlyAir, chunkSection.hasOnlyAir());
-
-                this.cc_onLightPropertiesChanged(pos, previousState, state);
+                this.cc_updateCellCaches(pos, state, previousState, chunkSection, wasOnlyAir);
 
                 boolean flag4 = !previousState.is(block);
                 boolean flag2 = (flags & Block.UPDATE_MOVE_BY_PISTON) != 0;
@@ -272,9 +269,18 @@ public class LevelCube extends CubeAccess implements LevelClo {
         }
     }
 
-    private void cc_onLightPropertiesChanged(BlockPos pos, BlockState previous, BlockState state) {
-        if (LightEngine.hasDifferentLightProperties(previous, state)
-                && this.level.getChunkSource() instanceof io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeLightProvider provider) {
+    private void cc_updateCellCaches(BlockPos pos, BlockState state, BlockState previous, LevelChunkSection section, boolean wasOnlyAir) {
+        try {
+            this.cc_updateHeightmaps(pos, state, LightEngine.hasDifferentLightProperties(previous, state));
+            this.cc_onSectionEmptinessChanged(pos, wasOnlyAir, section.hasOnlyAir());
+        } finally {
+            this.cc_onLightCellChanged(pos, previous);
+        }
+    }
+
+    private void cc_onLightCellChanged(BlockPos pos, BlockState previous) {
+        // The client uses the old state to distinguish lighting edits from equivalent block changes.
+        if (this.level.getChunkSource() instanceof io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeLightProvider provider) {
             provider.cc_onCubeLightCellChanged(this, pos, previous);
         }
     }

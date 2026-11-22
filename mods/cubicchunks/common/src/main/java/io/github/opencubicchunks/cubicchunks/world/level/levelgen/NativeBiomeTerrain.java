@@ -21,22 +21,28 @@ import io.github.opencubicchunks.cubicchunks.world.level.CubicWorldData;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.CubeAccess;
 import io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeLightBlockSnapshot;
 import io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeSkyOcclusion;
+import net.minecraft.core.QuartPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
 
 /** One immutable decorated terrain source per world for new cubes and the lighting engine's missing neighbors. */
 public final class NativeBiomeTerrain {
     private static final int TERRAIN_COLUMNS = 256;
-    private static final int CACHE_SIZE = 32;
-    // Native terrain can itself dispatch work to Minecraft's background pool.
-    private static final Executor WORKER = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().name("CC biome generation ", 0).factory());
+    // A radius-eight cube view uses 81 tiles; its generation halo can use 121. Results accumulate lazily.
+    private static final int CACHE_SIZE = 128;
+    // Each tile waits for terrain on Minecraft's background pool. Bound concurrent tile memory while keeping that pool supplied.
+    private static final int WORKERS = Math.clamp(Runtime.getRuntime().availableProcessors() / 2, 2, 4);
+    private static final Executor WORKER = Executors.newFixedThreadPool(WORKERS, Thread.ofPlatform().daemon().name("CC biome generation ", 0).factory());
     private final LoadingCache<ChunkPos, UndecoratedColumn> biomes;
     private final Cache<ChunkPos, UndecoratedColumn> terrain = CacheBuilder.newBuilder().maximumSize(TERRAIN_COLUMNS).build();
     private final ServerLevel level;
@@ -44,6 +50,7 @@ public final class NativeBiomeTerrain {
     private final @Nullable DeepCaveTerrain deep;
     private final Executor generationExecutor;
     private final Map<ChunkPos, CompletableFuture<Map<ChunkPos, NativeBiomeColumn>>> tiles = new LinkedHashMap<>(16, .75f, true);
+    private final @Nullable NativeTerrainDiagnostics diagnostics = NativeTerrainDiagnostics.createIfEnabled();
 
     public NativeBiomeTerrain(ServerLevel level) {
         this(level, WORKER);
@@ -61,12 +68,27 @@ public final class NativeBiomeTerrain {
 
     private UndecoratedColumn generateBiomes(ChunkPos pos) {
         var source = level.getChunkSource();
-        var resolver = source.getGenerator().getBiomeSource().createUncachedResolver(source.randomState());
         var chunk = new ProtoChunk(pos, UpgradeData.EMPTY, LevelHeightAccessor.create(level.getMinY(), level.getHeight()),
                 level.palettedContainerFactory(), null);
-        chunk.fillBiomesFromNoise(resolver);
+        fillNativeBiomes(chunk, source.getGenerator().getBiomeSource(), source.randomState());
         chunk.setPersistedStatus(ChunkStatus.BIOMES);
         return new UndecoratedColumn(level, chunk);
+    }
+
+    /** Sample bounded climate volumes with vanilla's pooled context, retaining the original chunk-fill biome query order. */
+    static void fillNativeBiomes(ProtoChunk chunk, BiomeSource biomeSource, RandomState randomState) {
+        var buffers = randomState.acquireDensityBufferPool();
+        try {
+            var context = SamplerContext.builder().enableCaches().useBufferArena(buffers).build();
+            var sampler = randomState.createClimateSampler(context);
+            var pos = chunk.getPos();
+            var resolver = biomeSource.createResolverForChunk(sampler, QuartPos.fromBlock(pos.getMinBlockX()), QuartPos.fromBlock(chunk.getMinY()),
+                    QuartPos.fromBlock(pos.getMinBlockZ()), QuartPos.fromBlock(SectionPos.SECTION_SIZE), QuartPos.fromBlock(chunk.getHeight()),
+                    QuartPos.fromBlock(SectionPos.SECTION_SIZE));
+            chunk.fillBiomesFromNoise(resolver);
+        } finally {
+            randomState.releaseDensityBufferPool(buffers);
+        }
     }
 
     public NativeStructureLayout structures() {
@@ -81,26 +103,56 @@ public final class NativeBiomeTerrain {
         var key = new ChunkPos(Math.floorDiv(Coords.cubeToSection(pos.getX(), 0), BiomeGenerationTile.WIDTH),
                 Math.floorDiv(Coords.cubeToSection(pos.getZ(), 0), BiomeGenerationTile.WIDTH));
         var cached = tiles.get(key);
+        if (diagnostics != null) {
+            diagnostics.requested(cached != null);
+        }
         if (cached != null) {
             return cached;
         }
-        var future = CompletableFuture.supplyAsync(() -> new BiomeGenerationTile(level, key, biomes, terrain, structures, deep).generate(),
-                generationExecutor);
+        if (diagnostics != null) {
+            diagnostics.created(key);
+        }
+        var future = CompletableFuture.supplyAsync(() -> {
+            if (diagnostics != null) {
+                diagnostics.started();
+            }
+            return new BiomeGenerationTile(level, key, biomes, terrain, structures, deep).generate();
+        }, generationExecutor);
         tiles.put(key, future);
         future.whenComplete((result, error) -> finishTile(key, future, error));
         return future;
     }
 
     private synchronized void finishTile(ChunkPos key, CompletableFuture<?> future, Throwable failure) {
+        if (diagnostics != null) {
+            diagnostics.finished(failure != null);
+        }
         if (failure != null) {
             tiles.remove(key, future);
         }
+        boolean pendingAboveLimit = diagnostics != null && tiles.values().stream().filter(value -> !value.isDone()).count() > CACHE_SIZE;
+        // Pending shared futures are not retained results. Counting them would evict every newly completed tile while the queue is long.
+        int completed = (int) tiles.values().stream().filter(CompletableFuture::isDone).count();
         var iterator = tiles.values().iterator();
-        while (tiles.size() > CACHE_SIZE && iterator.hasNext()) {
-            if (iterator.next().isDone()) {
+        while (completed > CACHE_SIZE && iterator.hasNext()) {
+            var candidate = iterator.next();
+            if (candidate.isDone()) {
                 iterator.remove();
+                completed--;
+                if (diagnostics != null) {
+                    diagnostics.evicted(candidate == future, pendingAboveLimit);
+                }
             }
         }
+    }
+
+    /** Called reflectively by the optional development probe, never by normal gameplay. */
+    synchronized @Nullable Map<String, Object> diagnosticsSnapshot() {
+        if (diagnostics == null) {
+            return null;
+        }
+        int pending = (int) tiles.values().stream().filter(value -> !value.isDone()).count();
+        return diagnostics.snapshot(pending, tiles.size() - pending);
     }
 
     public CompletableFuture<CubeAccess> fill(CubeAccess cube) {

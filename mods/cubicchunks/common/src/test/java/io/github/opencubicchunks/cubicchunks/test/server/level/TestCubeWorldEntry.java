@@ -169,4 +169,57 @@ class TestCubeWorldEntry extends BaseTest {
             assertEquals(!local, sender.isPending(far.cc_getCloPos().asLong()));
         }
     }
+
+    @Test
+    void networkBatchSkipsUnreadyNearCubeAndKeepsItsPendingKeyUntilReady() throws Exception {
+        var collect = PlayerChunkSender.class.getDeclaredMethod("cc_collectChunksToSend", ChunkMap.class, CloPos.class);
+        collect.setAccessible(true);
+        var fetch = ChunkMap.class.getDeclaredMethod("cc_getChunkToSend", long.class);
+        fetch.setAccessible(true);
+        PlayerChunkSender sender = new PlayerChunkSender(false);
+        LevelCube deferred = new LevelCube(level, POS);
+        LevelCube ready = new LevelCube(level, CubePos.of(POS.getX(), POS.getY() + 2, POS.getZ()));
+        LevelCube farther = new LevelCube(level, CubePos.of(POS.getX(), POS.getY() + 4, POS.getZ()));
+        LevelClo column = (LevelClo) new LevelChunk(level, new ChunkPos(-2, 4));
+        ChunkMap map = mock();
+        for (LevelClo clo : List.of(ready, farther, column)) {
+            when((LevelClo) fetch.invoke(map, clo.cc_getCloPos().asLong())).thenReturn(clo);
+        }
+        setField(PlayerChunkSender.class, sender, "pendingChunks", new LongOpenHashSet(new long[] {
+                deferred.cc_getCloPos().asLong(), ready.cc_getCloPos().asLong(), farther.cc_getCloPos().asLong(), column.cc_getCloPos().asLong() }));
+        setField(PlayerChunkSender.class, sender, "batchQuota", 2.0f);
+
+        assertEquals(List.of(column, ready), collect.invoke(sender, map, CloPos.cube(POS)));
+        assertTrue(sender.isPending(deferred.cc_getCloPos().asLong()));
+        assertTrue(sender.isPending(farther.cc_getCloPos().asLong()));
+        assertFalse(sender.isPending(column.cc_getCloPos().asLong()));
+        assertFalse(sender.isPending(ready.cc_getCloPos().asLong()));
+
+        when((LevelClo) fetch.invoke(map, deferred.cc_getCloPos().asLong())).thenReturn(deferred);
+        assertEquals(List.of(deferred, farther), collect.invoke(sender, map, CloPos.cube(POS)));
+        assertFalse(sender.isPending(deferred.cc_getCloPos().asLong()));
+        assertFalse(sender.isPending(farther.cc_getCloPos().asLong()));
+    }
+
+    @Test
+    void quotaOneStillSendsReadyFarCubeWhileNearCubeWaitsForLight() throws Exception {
+        var collect = PlayerChunkSender.class.getDeclaredMethod("cc_collectChunksToSend", ChunkMap.class, CloPos.class);
+        collect.setAccessible(true);
+        var fetch = ChunkMap.class.getDeclaredMethod("cc_getChunkToSend", long.class);
+        fetch.setAccessible(true);
+        for (boolean local : new boolean[] { false, true }) {
+            PlayerChunkSender sender = new PlayerChunkSender(local);
+            LevelCube deferred = new LevelCube(level, POS);
+            LevelCube ready = new LevelCube(level, CubePos.of(POS.getX(), POS.getY() + 2, POS.getZ()));
+            ChunkMap map = mock();
+            when((LevelClo) fetch.invoke(map, ready.cc_getCloPos().asLong())).thenReturn(ready);
+            setField(PlayerChunkSender.class, sender, "pendingChunks",
+                    new LongOpenHashSet(new long[] { deferred.cc_getCloPos().asLong(), ready.cc_getCloPos().asLong() }));
+            setField(PlayerChunkSender.class, sender, "batchQuota", 1.0f);
+
+            assertEquals(List.of(ready), collect.invoke(sender, map, CloPos.cube(POS)));
+            assertTrue(sender.isPending(deferred.cc_getCloPos().asLong()));
+            assertFalse(sender.isPending(ready.cc_getCloPos().asLong()));
+        }
+    }
 }

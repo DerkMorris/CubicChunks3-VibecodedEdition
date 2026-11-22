@@ -76,6 +76,7 @@ public abstract class CubeAccess implements CloAccess {
     protected ChunkSkyLightSources skyLightSources;
     private @Nullable CubeSkyOcclusion cc_skyOcclusion;
     private volatile long cc_lightRevision;
+    private volatile long cc_blockRevision;
     private final Map<Structure, StructureStart> structureStarts = Maps.newHashMap();
     private final Map<Structure, LongSet> structureReferences = Maps.newHashMap();
     protected final Map<BlockPos, CompoundTag> pendingBlockEntities = Maps.newHashMap();
@@ -212,8 +213,18 @@ public abstract class CubeAccess implements CloAccess {
     }
 
     protected void cc_updateHeightmaps(BlockPos pos, BlockState state) {
+        this.cc_updateHeightmaps(pos, state, true);
+    }
+
+    protected void cc_updateHeightmaps(BlockPos pos, BlockState state, boolean lightPropertiesChanged) {
         // The section has already changed. Invalidate even if updating a heightmap subsequently fails.
-        this.cc_invalidateSkyOcclusion();
+        if (lightPropertiesChanged) {
+            this.cc_invalidateSkyOcclusion(true, pos);
+        } else {
+            // Keep future captures/persistence exact while retained lighting inputs remain equivalent.
+            this.cc_skyOcclusion = null;
+            this.cc_blockRevision++;
+        }
         for (CloHeightmap map : this.heightmaps.values()) {
             map.update(Coords.blockToLocal(pos.getX()), pos.getY(), Coords.blockToLocal(pos.getZ()), state);
         }
@@ -231,23 +242,44 @@ public abstract class CubeAccess implements CloAccess {
     }
 
     public void cc_invalidateSkyOcclusion() {
+        this.cc_invalidateSkyOcclusion(false);
+    }
+
+    private void cc_invalidateSkyOcclusion(boolean mutationComplete) {
+        this.cc_invalidateSkyOcclusion(mutationComplete, null);
+    }
+
+    private void cc_invalidateSkyOcclusion(boolean mutationComplete, @Nullable BlockPos changedCell) {
         if (this instanceof ImposterProtoCube imposter) {
-            ((CubeAccess) imposter.cc_getWrappedClo()).cc_invalidateSkyOcclusion();
+            ((CubeAccess) imposter.cc_getWrappedClo()).cc_invalidateSkyOcclusion(mutationComplete, changedCell);
         } else {
             this.cc_skyOcclusion = null;
+            this.cc_blockRevision++;
             this.cc_lightRevision++;
             if (this instanceof LevelCube cube && cube.getLevel() != null && cube.getLevel().getChunkSource() instanceof CubeLightProvider provider) {
-                provider.cc_onCubeBlockDataChanged(this);
+                if (changedCell != null) {
+                    provider.cc_onCubeBlockDataChanged(this, changedCell);
+                } else {
+                    provider.cc_onCubeBlockDataChanged(this, mutationComplete);
+                }
             }
         }
     }
 
-    /** Owner-thread revision of block data used by experimental lighting; saves and cache captures do not change it. */
+    /** Owner-thread revision of lighting inputs; edits with vanilla-equivalent light properties retain this revision. */
     public long cc_getLightRevision() {
         if (this instanceof ImposterProtoCube imposter) {
             return ((CubeAccess) imposter.cc_getWrappedClo()).cc_getLightRevision();
         }
         return this.cc_lightRevision;
+    }
+
+    /** Revision of all block data, including edits that leave every lighting input equivalent. */
+    public long cc_getBlockRevision() {
+        if (this instanceof ImposterProtoCube imposter) {
+            return ((CubeAccess) imposter.cc_getWrappedClo()).cc_getBlockRevision();
+        }
+        return this.cc_blockRevision;
     }
 
     protected void cc_checkBlockPosition(BlockPos pos) {

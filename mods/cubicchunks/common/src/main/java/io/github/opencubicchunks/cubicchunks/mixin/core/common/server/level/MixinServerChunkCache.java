@@ -12,6 +12,7 @@ import javax.annotation.Nullable;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.datafixers.DataFixer;
 import io.github.notstirred.dasm.api.annotations.Dasm;
 import io.github.notstirred.dasm.api.annotations.redirect.redirects.AddFieldToSets;
@@ -36,6 +37,7 @@ import io.github.opencubicchunks.cubicchunks.world.level.cube.LevelCube;
 import io.github.opencubicchunks.cubicchunks.world.level.entity.CubeNaturalSpawner;
 import io.github.opencubicchunks.cubicchunks.world.level.entity.CubeSpecialSpawnSupport;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.ColumnSurfaceResult;
+import io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnSource;
 import io.github.opencubicchunks.cubicchunks.world.level.lighting.ColumnSkyLightResult;
 import io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeLightBounds;
 import io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeLightPacketSnapshot;
@@ -61,6 +63,7 @@ import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.NaturalSpawner;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LightChunk;
@@ -69,6 +72,7 @@ import net.minecraft.world.level.entity.ChunkStatusUpdateListener;
 import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
+import net.minecraft.world.level.lighting.LightEngine;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.level.storage.SavedDataStorage;
 import org.spongepowered.asm.mixin.Dynamic;
@@ -94,6 +98,21 @@ public abstract class MixinServerChunkCache extends MixinChunkSource implements 
 
     @Override public void cc_onCubeBlockDataChanged(CubeAccess cube) {
         ((CubicChunkMap) this.chunkMap).cc_onCubeBlockDataChanged(cube);
+    }
+
+    @Override public void cc_onCubeBlockDataChanged(CubeAccess cube, boolean mutationComplete) {
+        ((CubicChunkMap) this.chunkMap).cc_onCubeBlockDataChanged(cube, mutationComplete);
+    }
+
+    @Override public void cc_onCubeBlockDataChanged(CubeAccess cube, BlockPos changedCell) {
+        ((CubicChunkMap) this.chunkMap).cc_onCubeBlockDataChanged(cube, changedCell);
+    }
+
+    @Override public void cc_onCubeLightCellChanged(CubeAccess cube, BlockPos pos, BlockState previous) {
+        if (!LightEngine.hasDifferentLightProperties(previous, cube.getBlockState(pos))) {
+            // Physical column/weather data still changed even though no lighting publication was invalidated.
+            ((CubeColumnSource) this.chunkMap).cc_columnChanged(cube);
+        }
     }
 
     @Override public CubeLightPacketSnapshot cc_captureCubeLight(LevelCube cube) {
@@ -187,6 +206,13 @@ public abstract class MixinServerChunkCache extends MixinChunkSource implements 
         if (((CanBeCubic) level).cc_isCubic()) {
             this.cc_setCubic();
         }
+    }
+
+    /** Server settings use section distances; the cubic simulation graph propagates one edge per cube. */
+    @WrapOperation(method = { "<init>", "setSimulationDistance" }, at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/DistanceManager;updateSimulationDistance(I)V"))
+    private void cc_simulationRadius(DistanceManager manager, int sectionDistance, Operation<Void> original) {
+        // cc_onInit establishes this flag before the constructor reaches its initial simulation update.
+        original.call(manager, this.cc_isCubic ? Coords.sectionToCubeCeil(sectionDistance) : sectionDistance);
     }
 
     @AddTransformToSets(ChunkToCubeSet.ServerChunkCache_redirects.class)

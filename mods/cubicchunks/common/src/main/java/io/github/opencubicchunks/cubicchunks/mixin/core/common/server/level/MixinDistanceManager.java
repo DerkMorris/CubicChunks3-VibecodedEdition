@@ -7,6 +7,7 @@ import io.github.notstirred.dasm.api.annotations.Dasm;
 import io.github.notstirred.dasm.api.annotations.selector.Ref;
 import io.github.opencubicchunks.cc_core.world.level.CloPos;
 import io.github.opencubicchunks.cubicchunks.MarkableAsCubic;
+import io.github.opencubicchunks.cubicchunks.mixin.access.common.ThrottlingChunkTaskDispatcherAccess;
 import io.github.opencubicchunks.cubicchunks.mixin.dasmsets.ChunkToCloSet;
 import io.github.opencubicchunks.cubicchunks.world.level.CubicTicketStorage;
 import net.minecraft.core.SectionPos;
@@ -14,6 +15,7 @@ import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.DistanceManager;
 import net.minecraft.server.level.LoadingChunkTracker;
 import net.minecraft.server.level.SimulationChunkTracker;
+import net.minecraft.server.level.ThrottlingChunkTaskDispatcher;
 import net.minecraft.server.level.Ticket;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.TicketStorage;
@@ -33,15 +35,19 @@ import org.spongepowered.asm.mixin.injection.At;
 @Dasm(value = ChunkToCloSet.class, target = @Ref(DistanceManager.class))
 @Mixin(DistanceManager.class)
 public abstract class MixinDistanceManager implements MarkableAsCubic {
+    // The vanilla four-column admission window serializes a three-dimensional view behind distant cube dependencies.
+    private static final int CUBE_TICKETS_IN_EXECUTION = 32;
     protected boolean cc_isCubic;
 
     @Shadow @Final private LoadingChunkTracker loadingChunkTracker;
     @Shadow @Final private SimulationChunkTracker simulationChunkTracker;
     @Shadow @Final private DistanceManager.FixedPlayerDistanceChunkTracker naturalSpawnChunkCounter;
     @Shadow @Final private DistanceManager.PlayerTicketTracker playerTicketManager;
+    @Shadow @Final private ThrottlingChunkTaskDispatcher ticketDispatcher;
 
     @Override public void cc_setCubic() {
         cc_isCubic = true;
+        ((ThrottlingChunkTaskDispatcherAccess) this.ticketDispatcher).cc_setMaxChunksInExecution(CUBE_TICKETS_IN_EXECUTION);
         ((MarkableAsCubic) this.loadingChunkTracker).cc_setCubic();
         ((MarkableAsCubic) this.simulationChunkTracker).cc_setCubic();
         ((MarkableAsCubic) this.naturalSpawnChunkCounter).cc_setCubic();

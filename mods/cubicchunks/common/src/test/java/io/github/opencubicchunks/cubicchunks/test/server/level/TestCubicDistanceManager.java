@@ -9,11 +9,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.Executor;
+import java.util.stream.IntStream;
 
 import javax.annotation.Nullable;
 
 import io.github.opencubicchunks.cc_core.world.level.CloPos;
 import io.github.opencubicchunks.cubicchunks.MarkableAsCubic;
+import io.github.opencubicchunks.cubicchunks.mixin.access.common.DistanceManagerAccess;
 import io.github.opencubicchunks.cubicchunks.mixin.core.common.server.level.MixinDistanceManager;
 import io.github.opencubicchunks.cubicchunks.mixin.core.common.server.level.MixinPlayerTicketTracker;
 import io.github.opencubicchunks.cubicchunks.mixin.test.common.server.level.ChunkTrackerTestAccess;
@@ -25,6 +27,7 @@ import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.DistanceManager;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ThrottlingChunkTaskDispatcher;
 import net.minecraft.server.level.Ticket;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.util.TriState;
@@ -89,6 +92,69 @@ public class TestCubicDistanceManager extends BaseTest {
         // (which occurs when using RETURNS_DEEP_STUBS)
         DistanceManager distanceManager = new TestDistanceManager(ticketStorage, Runnable::run, mainThreadExecutor);
         return distanceManager;
+    }
+
+    @Test
+    void playerTicketAdmissionIsBoundedAndResumesWhenAnActiveTicketCompletes() {
+        for (boolean cubic : new boolean[] { false, true }) {
+            int limit = cubic ? 32 : 4;
+            var dispatcher = ticketDispatcher(cubic);
+            List<Integer> admitted = new ArrayList<>();
+            for (int i = 0; i < limit + 3; i++) {
+                int ticket = i;
+                dispatcher.submit(() -> admitted.add(ticket), ticketKey(cubic, ticket), () -> 1);
+            }
+            assertEquals(limit, admitted.size());
+            assertEquals(IntStream.range(0, limit).boxed().toList(), admitted);
+
+            dispatcher.release(ticketKey(cubic, 0), () -> {}, false);
+            assertEquals(limit + 1, admitted.size());
+            assertEquals(limit, admitted.getLast());
+            // A repeated completion must not free a second admission slot.
+            dispatcher.release(ticketKey(cubic, 0), () -> {}, false);
+            assertEquals(limit + 1, admitted.size());
+            dispatcher.release(ticketKey(cubic, 1), () -> {}, false);
+            assertEquals(limit + 2, admitted.size());
+        }
+    }
+
+    @Test
+    void playerTicketCancellationKeepsTheBoundAndTheNearestQueuedTicketRunsNext() {
+        for (boolean cubic : new boolean[] { false, true }) {
+            int limit = cubic ? 32 : 4;
+            var dispatcher = ticketDispatcher(cubic);
+            List<Integer> admitted = new ArrayList<>();
+            for (int i = 0; i < limit; i++) {
+                int ticket = i;
+                dispatcher.submit(() -> admitted.add(ticket), ticketKey(cubic, ticket), () -> 1);
+            }
+            int far = limit, near = limit + 1, cancelled = limit + 2;
+            dispatcher.submit(() -> admitted.add(far), ticketKey(cubic, far), () -> 8);
+            dispatcher.submit(() -> admitted.add(near), ticketKey(cubic, near), () -> 1);
+            dispatcher.submit(() -> admitted.add(cancelled), ticketKey(cubic, cancelled), () -> 0);
+
+            dispatcher.release(ticketKey(cubic, cancelled), () -> {}, true);
+            assertEquals(limit, admitted.size(), "Cancelling queued work must not free an active ticket's slot");
+            dispatcher.release(ticketKey(cubic, 0), () -> {}, true);
+            assertEquals(limit + 1, admitted.size());
+            assertEquals(near, admitted.getLast());
+            dispatcher.release(ticketKey(cubic, 1), () -> {}, false);
+            assertEquals(limit + 2, admitted.size());
+            assertEquals(far, admitted.getLast());
+            assertFalse(admitted.contains(cancelled));
+        }
+    }
+
+    private static ThrottlingChunkTaskDispatcher ticketDispatcher(boolean cubic) {
+        var manager = new TestDistanceManager(new TicketStorage(), Runnable::run, Runnable::run);
+        if (cubic) {
+            ((MarkableAsCubic) manager).cc_setCubic();
+        }
+        return ((DistanceManagerAccess) manager).cc_ticketDispatcher();
+    }
+
+    private static long ticketKey(boolean cubic, int index) {
+        return cubic ? CloPos.cube(index, -8, 0).toLong() : new ChunkPos(index, 0).pack();
     }
 
     @Test

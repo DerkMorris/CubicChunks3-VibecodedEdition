@@ -79,6 +79,40 @@ public final class CubeSkyOcclusion {
         return this.pos;
     }
 
+    /** Exact comparison of every input used by a world sky column, including the two external boundary faces. */
+    public boolean sameOcclusion(CubeSkyOcclusion other) {
+        return this.pos.equals(other.pos) && Arrays.equals(this.highestInternalOffsets, other.highestInternalOffsets)
+                && Arrays.equals(this.bottomStates, other.bottomStates) && Arrays.equals(this.topStates, other.topStates);
+    }
+
+    /** The same internal edges and boundary states with identical vanilla lighting behavior. */
+    public boolean equivalentOcclusion(CubeSkyOcclusion other) {
+        return pos.equals(other.pos) && Arrays.equals(highestInternalOffsets, other.highestInternalOffsets)
+                && equivalentBoundary(bottomStates, other.bottomStates) && equivalentBoundary(topStates, other.topStates);
+    }
+
+    private static boolean equivalentBoundary(BlockState[] before, BlockState[] after) {
+        for (int index = 0; index < before.length; index++) {
+            if (before[index] != after[index] && LightEngine.hasDifferentLightProperties(before[index], after[index])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Every selected X/Z cell has an internal blocking edge above this Y; horizontal bounds are half-open. */
+    boolean blocksSkyAbove(int y, int minX, int minZ, int maxX, int maxZ) {
+        for (int z = minZ; z < maxZ; z++) {
+            for (int x = minX; x < maxX; x++) {
+                int offset = Byte.toUnsignedInt(highestInternalOffsets[index(x, z)]);
+                if (offset == 0 || pos.minCubeY() + offset <= y) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     /** Absolute Y of the upper block at the highest blocking edge whose two endpoints are inside this cube. */
     public OptionalInt highestInternalEdgeY(int localX, int localZ) {
         int offset = Byte.toUnsignedInt(this.highestInternalOffsets[index(localX, localZ)]);

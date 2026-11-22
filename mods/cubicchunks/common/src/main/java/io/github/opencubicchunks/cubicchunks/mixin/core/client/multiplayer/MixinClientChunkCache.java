@@ -111,6 +111,15 @@ public abstract class MixinClientChunkCache extends MixinChunkSource implements 
     }
 
     @Override public void cc_onCubeBlockDataChanged(CubeAccess cube) {
+        cc_onCubeBlockDataChanged(cube, false);
+    }
+
+    @Override public void cc_onCubeBlockDataChanged(CubeAccess cube, boolean mutationComplete) {
+        // Completed single-cell writes supply their previous state through cc_onCubeLightCellChanged below.
+        // Bulk writes have no such proof and must conservatively revoke the whole sky-dependent column.
+        if (mutationComplete) {
+            return;
+        }
         if (!this.cc_applyingFullCubePacket) {
             this.cc_lightState.invalidateLocalAt(cube.cc_getCubePos());
         }
@@ -118,7 +127,10 @@ public abstract class MixinClientChunkCache extends MixinChunkSource implements 
 
     @Override public void cc_onCubeLightCellChanged(CubeAccess cube, BlockPos pos, net.minecraft.world.level.block.state.BlockState previous) {
         if (!this.cc_applyingFullCubePacket) {
-            this.cc_lightState.changeCell(pos, previous);
+            this.cc_lightState.invalidateCell(pos, previous);
+            if (net.minecraft.world.level.lighting.LightEngine.hasDifferentLightProperties(previous, cube.getBlockState(pos))) {
+                this.cc_lightState.changeCell(pos, previous);
+            }
         }
     }
 

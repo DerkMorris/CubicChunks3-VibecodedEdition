@@ -163,7 +163,7 @@ public final class CubeColumnCache {
                 boolean placeholder = !terrain
                         && java.util.Arrays.stream(cube.getSections()).allMatch(net.minecraft.world.level.chunk.LevelChunkSection::hasOnlyAir);
                 live.put(cube.cc_getCubePos().getY(),
-                        new Stamp(cube, cube.cc_getLightRevision(), status, terrain ? CubeColumnBlocks.capture(cube) : null, placeholder));
+                        new Stamp(cube, cube.cc_getBlockRevision(), status, terrain ? CubeColumnBlocks.capture(cube) : null, placeholder));
             }
         }
 
@@ -197,11 +197,11 @@ public final class CubeColumnCache {
 
     private record Stamp(@Nullable CubeAccess cube, long revision, ChunkStatus status, @Nullable CubeColumnBlocks blocks, boolean placeholder) {
         private boolean matches(CubeAccess other) {
-            return cube == other && revision == other.cc_getLightRevision() && status == other.getPersistedStatus();
+            return cube == other && revision == other.cc_getBlockRevision() && status == other.getPersistedStatus();
         }
 
         private boolean changed() {
-            return cube != null && (revision != cube.cc_getLightRevision() || status != cube.getPersistedStatus());
+            return cube != null && (revision != cube.cc_getBlockRevision() || status != cube.getPersistedStatus());
         }
     }
 }

@@ -7,10 +7,19 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.OptionalInt;
 
 import io.github.opencubicchunks.cc_core.api.CubePos;
@@ -24,6 +33,8 @@ import io.github.opencubicchunks.cubicchunks.world.level.cube.LevelCube;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.ProtoCube;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.status.CubeStatusTasks;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.storage.SerializableCubeData;
+import io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeLightProvider;
+import io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeLightView;
 import io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeSkyOcclusion;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -32,11 +43,121 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.chunk.ChunkSource;
 import net.minecraft.world.level.chunk.UpgradeData;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.lighting.LightEngine;
 import org.junit.jupiter.api.Test;
 
 public class TestCubeSkyOcclusionLifecycle extends BaseTest {
     private static final CubePos POSITION = CubePos.of(-5, -9000, 7);
+
+    @Test
+    void everyChangedCellSuppliesItsPreviousStateEvenWhenLightPropertiesMatch() {
+        Level level = mockLevelWithPalettes(Level.class);
+        ChunkSource source = mock(ChunkSource.class, withSettings().extraInterfaces(CubeLightProvider.class).defaultAnswer(RETURNS_DEEP_STUBS));
+        when(level.getChunkSource()).thenReturn(source);
+        LevelCube cube = new LevelCube(level, POSITION);
+        BlockPos block = POSITION.asBlockPos(8, 31, 8);
+        List<String> callbacks = new ArrayList<>();
+        List<net.minecraft.world.level.block.state.BlockState> previous = new ArrayList<>();
+        doAnswer(invocation -> {
+            assertEquals(block, invocation.getArgument(1));
+            assertEquals(Blocks.GRASS_BLOCK.defaultBlockState(), cube.getBlockState(block));
+            callbacks.add("revision");
+            return null;
+        }).when((CubeLightProvider) source).cc_onCubeBlockDataChanged(any(), any(BlockPos.class));
+        doAnswer(invocation -> {
+            callbacks.add("cell");
+            assertEquals(block, invocation.getArgument(1));
+            previous.add(invocation.getArgument(2));
+            return null;
+        }).when((CubeLightProvider) source).cc_onCubeLightCellChanged(any(), any(), any());
+        assertFalse(net.minecraft.world.level.lighting.LightEngine.hasDifferentLightProperties(
+                Blocks.GRASS_BLOCK.defaultBlockState(), Blocks.DIRT.defaultBlockState()));
+        cube.setBlockState(block, Blocks.GRASS_BLOCK.defaultBlockState());
+        long revision = cube.cc_getLightRevision();
+        CubeSkyOcclusion grass = cube.cc_snapshotSkyOcclusion();
+        cube.setBlockState(block, Blocks.DIRT.defaultBlockState());
+        cube.setBlockState(block, Blocks.DIRT.defaultBlockState());
+        assertEquals(revision, cube.cc_getLightRevision());
+        CubeSkyOcclusion dirt = cube.cc_snapshotSkyOcclusion();
+        assertNotSame(grass, dirt, "Fresh snapshots must retain the exact current boundary states");
+        assertEquals(Blocks.GRASS_BLOCK.defaultBlockState(), grass.topState(8, 8));
+        assertEquals(Blocks.DIRT.defaultBlockState(), dirt.topState(8, 8));
+        assertEquals(List.of("revision", "cell", "cell"), callbacks);
+        assertEquals(List.of(Blocks.AIR.defaultBlockState(), Blocks.GRASS_BLOCK.defaultBlockState()), previous);
+    }
+
+    @Test
+    void equivalentTransparentEditsUpdateHeightmapsButEmissionShapeAndBulkChangesAdvanceLighting() {
+        Level level = mockLevelWithPalettes(Level.class);
+        LevelCube cube = new LevelCube(level, POSITION);
+        BlockPos block = POSITION.asBlockPos(8, 8, 8);
+        int emptyHeight = POSITION.minCubeY() - 1;
+        assertFalse(LightEngine.hasDifferentLightProperties(Blocks.AIR.defaultBlockState(), Blocks.GLASS.defaultBlockState()));
+        assertEquals(emptyHeight, cube.getHeight(Heightmap.Types.WORLD_SURFACE, block.getX(), block.getZ()));
+        long revision = cube.cc_getLightRevision();
+        cube.setBlockState(block, Blocks.GLASS.defaultBlockState());
+        assertEquals(block.getY(), cube.getHeight(Heightmap.Types.WORLD_SURFACE, block.getX(), block.getZ()));
+        assertEquals(revision, cube.cc_getLightRevision());
+        cube.setBlockState(block, Blocks.AIR.defaultBlockState());
+        assertEquals(emptyHeight, cube.getHeight(Heightmap.Types.WORLD_SURFACE, block.getX(), block.getZ()));
+        assertEquals(revision, cube.cc_getLightRevision());
+        cube.setBlockState(block, Blocks.GLOWSTONE.defaultBlockState());
+        assertEquals(++revision, cube.cc_getLightRevision(), "An emitter must invalidate lighting");
+        cube.setBlockState(block, Blocks.STONE.defaultBlockState());
+        assertEquals(++revision, cube.cc_getLightRevision(), "Removing emission must invalidate lighting");
+        assertTrue(LightEngine.hasDifferentLightProperties(Blocks.STONE.defaultBlockState(), Blocks.OAK_STAIRS.defaultBlockState()));
+        cube.setBlockState(block, Blocks.OAK_STAIRS.defaultBlockState());
+        assertEquals(++revision, cube.cc_getLightRevision(), "Occluding shapes must invalidate lighting");
+        cube.cc_invalidateHeightmaps();
+        assertEquals(++revision, cube.cc_getLightRevision(), "Bulk replacement has no per-cell equivalence proof");
+    }
+
+    @Test
+    void blockMutationIsCompleteBeforeItsCallbackButBulkInvalidationIsConservative() {
+        Level level = mockLevelWithPalettes(Level.class);
+        ChunkSource source = mock(ChunkSource.class, withSettings().extraInterfaces(CubeLightProvider.class).defaultAnswer(RETURNS_DEEP_STUBS));
+        when(level.getChunkSource()).thenReturn(source);
+        LevelCube cube = new LevelCube(level, POSITION);
+        BlockPos block = POSITION.asBlockPos(8, 8, 8);
+        List<Boolean> phases = new ArrayList<>();
+        doAnswer(invocation -> {
+            boolean complete = invocation.getArgument(1);
+            assertFalse(complete);
+            phases.add(complete);
+            return null;
+        }).when((CubeLightProvider) source).cc_onCubeBlockDataChanged(any(), anyBoolean());
+        doAnswer(invocation -> {
+            assertEquals(block, invocation.getArgument(1));
+            phases.add(true);
+            assertEquals(Blocks.STONE.defaultBlockState(), cube.getBlockState(block));
+            assertEquals(OptionalInt.of(block.getY() + 1), cube.cc_snapshotSkyOcclusion().highestInternalEdgeY(8, 8));
+            return null;
+        }).when((CubeLightProvider) source).cc_onCubeBlockDataChanged(any(), any(BlockPos.class));
+        cube.setBlockState(block, Blocks.STONE.defaultBlockState());
+        cube.cc_invalidateHeightmaps();
+        assertEquals(List.of(true, false), phases);
+    }
+
+    @Test
+    void positionAwareCallbacksRemainCompatibleWithBooleanOnlyProviders() {
+        LevelCube cube = new LevelCube(mockLevelWithPalettes(Level.class), POSITION);
+        List<Boolean> phases = new ArrayList<>();
+        CubeLightProvider provider = new CubeLightProvider() {
+            @Override public CubeLightView cc_getCubeLightView(CubePos pos) {
+                return null;
+            }
+
+            @Override public void cc_onCubeBlockDataChanged(CubeAccess changed, boolean complete) {
+                assertSame(cube, changed);
+                phases.add(complete);
+            }
+        };
+        provider.cc_onCubeBlockDataChanged(cube, POSITION.asBlockPos(8, 8, 8));
+        assertEquals(List.of(true), phases);
+    }
 
     @Test
     void protoEditsRebuildInternalEdgesAndBothBoundaryPlanesWithoutMutatingOlderSnapshots() {

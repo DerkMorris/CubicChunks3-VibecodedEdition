@@ -3,6 +3,10 @@ package io.github.opencubicchunks.cubicchunks.test.server.level;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import java.util.List;
 import java.util.Set;
@@ -20,8 +24,12 @@ import io.github.opencubicchunks.cubicchunks.world.level.cube.ProtoCube;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnBlocks;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnCache;
 import io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnSnapshot;
+import io.github.opencubicchunks.cubicchunks.world.level.levelgen.heightmap.CubeColumnSource;
+import io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeLightProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ChunkMap;
+import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.UpgradeData;
@@ -32,6 +40,41 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class TestCubeWeatherColumns extends BaseTest {
+    @Test
+    void equivalentCellCallbackStillNotifiesColumnsWithoutCallingTheLightingPath() throws ReflectiveOperationException {
+        var cache = mock(ServerChunkCache.class, CALLS_REAL_METHODS);
+        var map = mock(ChunkMap.class);
+        var field = ServerChunkCache.class.getDeclaredField("chunkMap");
+        field.setAccessible(true);
+        field.set(cache, map);
+        var level = Misc.mockLevelWithPalettes(ServerLevel.class);
+        var pos = new BlockPos(16, 32000, 16);
+        var cube = new LevelCube(level, CubePos.from(pos));
+        cube.setBlockState(pos, Blocks.GLASS.defaultBlockState(), 0);
+        ((CubeLightProvider) cache).cc_onCubeLightCellChanged(cube, pos, Blocks.AIR.defaultBlockState());
+        verify((CubeColumnSource) map).cc_columnChanged(cube);
+        verifyNoMoreInteractions(map);
+    }
+
+    @Test
+    void equivalentLightingEditRefreshesPhysicalColumnWithoutLightingNotification() {
+        var level = Misc.mockLevelWithPalettes(ServerLevel.class);
+        var pos = new BlockPos(16, 32000, 16);
+        var cube = new LevelCube(level, CubePos.from(pos));
+        var disk = snapshot(cube, 32000, 32031);
+        var cache = new CubeColumnCache(32000, 32031, key -> CompletableFuture.completedFuture(disk));
+        assertTrue(cache.get(16, 16, List.of(cube)).state(16, 32000, 16).isAir());
+        long lightRevision = cube.cc_getLightRevision();
+        long blockRevision = cube.cc_getBlockRevision();
+        cube.setBlockState(pos, Blocks.GLASS.defaultBlockState(), 0);
+        assertEquals(lightRevision, cube.cc_getLightRevision());
+        assertEquals(blockRevision + 1, cube.cc_getBlockRevision());
+        assertEquals(32001, cache.get(16, 16, List.of(cube)).firstAvailable(Heightmap.Types.MOTION_BLOCKING, 16, 16).orElseThrow());
+        cube.setBlockState(pos, Blocks.AIR.defaultBlockState(), 0);
+        assertEquals(lightRevision, cube.cc_getLightRevision());
+        assertTrue(cache.get(16, 16, List.of()).state(16, 32000, 16).isAir(), "Final equivalent edits must be captured before unloading");
+    }
+
     @ParameterizedTest
     @ValueSource(ints = { 96, 32000, -32000, 32000000, -32000000 })
     void liveRoofOverridesDiskAndRemainsAuthoritativeAfterUnload(int y) {

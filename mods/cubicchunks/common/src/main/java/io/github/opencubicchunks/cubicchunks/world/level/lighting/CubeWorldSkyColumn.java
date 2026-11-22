@@ -3,6 +3,7 @@ package io.github.opencubicchunks.cubicchunks.world.level.lighting;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.IntBinaryOperator;
 import java.util.function.IntFunction;
@@ -20,7 +21,10 @@ import net.minecraft.world.level.block.state.BlockState;
 /** Complete sky-source index for the current hills generator, with saved and live cubes overriding generated terrain. */
 public final class CubeWorldSkyColumn {
     private static final int DIAMETER = CubicConstants.DIAMETER_IN_BLOCKS;
+    private static final int MAX_RETAINED_DEEP_SOURCES = 128;
     private final int[] edges = new int[DIAMETER * DIAMETER];
+    private final int lowestEdge;
+    private final Map<Integer, CubeSkyOcclusion> resolvedSources;
 
     public CubeWorldSkyColumn(long seed, int cubeX, int cubeZ, Map<Integer, CubeSkyOcclusion> overrides) {
         this((x, z) -> CubeTerrainGenerator.surface(seed, x, z), cubeX, cubeZ, overrides);
@@ -50,10 +54,30 @@ public final class CubeWorldSkyColumn {
                 edges[x + DIAMETER * z] = highest(heights[x + DIAMETER * z], x, z, resolved, descending, deep);
             }
         }
+        lowestEdge = java.util.Arrays.stream(edges).min().orElseThrow();
+        var retained = new TreeMap<Integer, CubeSkyOcclusion>();
+        resolved.forEach((y, summary) -> {
+            if (!overrides.containsKey(y)) {
+                retained.put(y, summary);
+                if (retained.size() > MAX_RETAINED_DEEP_SOURCES) {
+                    retained.pollFirstEntry();
+                }
+            }
+        });
+        resolvedSources = Map.copyOf(retained);
     }
 
     public int edge(int x, int z) {
         return edges[Math.floorMod(x, DIAMETER) + DIAMETER * Math.floorMod(z, DIAMETER)];
+    }
+
+    int lowestEdge() {
+        return lowestEdge;
+    }
+
+    /** Retain at most 128 generated deep summaries; missing/omitted heights require the caller's conservative fallback. */
+    @Nullable CubeSkyOcclusion source(int cubeY) {
+        return resolvedSources.get(cubeY);
     }
 
     private static void addNeighbors(Set<Integer> candidates, int y) {
