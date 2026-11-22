@@ -2,6 +2,7 @@ package io.github.opencubicchunks.cubicchunks.mixin.core.client.renderer;
 
 import io.github.opencubicchunks.cc_core.api.CubePos;
 import io.github.opencubicchunks.cubicchunks.client.renderer.CubicLevelRenderer;
+import io.github.opencubicchunks.cubicchunks.client.renderer.CubicRenderingBackend;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.SectionOcclusionGraph;
 import org.spongepowered.asm.mixin.Mixin;
@@ -13,10 +14,18 @@ public abstract class MixinLevelRenderer implements CubicLevelRenderer {
     @Shadow public abstract SectionOcclusionGraph sectionOcclusionGraph();
 
     @Override public void cc_onCubeReadyToRender(CubePos cubePos) {
-        ((CubicLevelRenderer) sectionOcclusionGraph()).cc_onCubeReadyToRender(cubePos);
+        cc_renderBackend().cc_onCubeReadyToRender(cubePos);
     }
 
     @Override public void cc_onCubeUnloaded(CubePos cubePos) {
-        ((CubicLevelRenderer) sectionOcclusionGraph()).cc_onCubeUnloaded(cubePos);
+        cc_renderBackend().cc_onCubeUnloaded(cubePos);
+    }
+
+    @Override public void cc_onCubeViewChanged() {
+        cc_renderBackend().cc_onCubeViewChanged();
+    }
+
+    private CubicLevelRenderer cc_renderBackend() {
+        return this instanceof CubicRenderingBackend backend ? backend.cc_cubeRenderer() : (CubicLevelRenderer) sectionOcclusionGraph();
     }
 }

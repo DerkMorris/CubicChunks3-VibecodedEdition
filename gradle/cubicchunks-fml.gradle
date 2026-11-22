@@ -2,6 +2,7 @@
 repositories {
     mavenCentral()
     maven { url = 'https://jitpack.io' }
+    maven { url = 'https://maven.caffeinemc.net/releases' }
 }
 def sharedJava = objects.sourceDirectorySet('commonJava', 'Shared game code')
 sharedJava.srcDir parent.file('common/src/main/java')
@@ -26,6 +27,8 @@ dependencies {
     }
     compileOnly 'io.github.notstirred:dasm:3.2.0:api'
     compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+    // Optional renderer integration; Sodium is never bundled or required at runtime.
+    compileOnly('net.caffeinemc:sodium-fabric:0.9.2+mc26.3') { transitive = false }
     implementation 'com.electronwill.night-config:core:3.9.0'
     implementation 'com.electronwill.night-config:toml:3.9.0'
 }

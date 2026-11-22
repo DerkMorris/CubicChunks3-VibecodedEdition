@@ -41,6 +41,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
     private final WorldGameplayProbe gameplay = Boolean.getBoolean("cubicchunks.smoke.gameplay") ? new WorldGameplayProbe() : null;
     private final WorldEnvironmentProbe environment = Boolean.getBoolean("cubicchunks.smoke.environment") ? new WorldEnvironmentProbe() : null;
     private final WorldWeatherProbe weather = Boolean.getBoolean("cubicchunks.smoke.weather") ? new WorldWeatherProbe() : null;
+    private final SodiumCompatibilityProbe sodium = Boolean.getBoolean("cubicchunks.smoke.sodium") ? new SodiumCompatibilityProbe() : null;
     private final WorldMultiplayerProbe multiplayer = System.getProperty("cubicchunks.smoke.multiplayer") != null ? new WorldMultiplayerProbe()
             : null;
     private final WorldPortalProbe portals = Boolean.getBoolean("cubicchunks.smoke.portals") ? new WorldPortalProbe() : null;
@@ -175,6 +176,9 @@ public final class WorldEntryProbe implements ClientModInitializer {
             if (weather != null && ticks >= 160) {
                 weather.tick(client);
             }
+            if (sodium != null && ticks >= 160) {
+                sodium.tick(client);
+            }
             if (multiplayer != null && ticks >= 160) {
                 multiplayer.tick(client);
             }
@@ -186,7 +190,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
             }
             if (heights == null && descent == null && latency == null && caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null && darkening == null
                     && mobs == null && travel == null && daylight == null && biomes == null && gameplay == null && environment == null
-                    && portals == null && raidBoss == null && weather == null && multiplayer == null
+                    && portals == null && raidBoss == null && weather == null && sodium == null && multiplayer == null
                     && ticks >= Integer.getInteger("cubicchunks.smoke.ticks", 200) && client.gui.screen() == null
                     && (!asyncSaves || reopen || asyncProbe.isDone())
                     && (!asyncSaves || client.level.getBlockState(MARKER.above()).is(net.minecraft.world.level.block.Blocks.EMERALD_BLOCK))
@@ -198,7 +202,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
             }
             if (descent == null && latency == null && ticks == (caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null
                     && darkening == null && mobs == null && travel == null && daylight == null && biomes == null && gameplay == null
-                    && environment == null && portals == null && raidBoss == null && weather == null && multiplayer == null ? 1200 : 6000)) {
+                    && environment == null && portals == null && raidBoss == null && weather == null && sodium == null && multiplayer == null ? 1200 : 6000)) {
                 throw new IllegalStateException("World entry timed out: " + client.gui.screen());
             }
         }

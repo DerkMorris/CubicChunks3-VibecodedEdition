@@ -75,6 +75,12 @@ Use `:cubicchunks:forge:runClient` / `runServer` or `:cubicchunks:neoforge:runCl
 Mod versions are defined in `mods/<id>/mod.properties`; tool and Minecraft versions are defined in the root `gradle.properties`.
 The `cubicchunks` mod ID, save format and network packet IDs have been preserved.
 
+## Sodium compatibility
+
+The optional renderer adapter targets **Sodium 0.9.2+mc26.3 for Fabric**. Install `sodium-fabric-0.9.2+mc26.3.jar` alongside the usual CubicChunks Fabric JAR and Fabric API. Sodium is neither required nor bundled; without it, CubicChunks uses its existing renderer.
+
+The adapter supplies cube sections, biomes, light and block entities to Sodium, and forwards cube loading, unloading and renderer reloads. Other Sodium versions and Sodium on NeoForge are unverified. Reproducible snapshot and real-client checks are described in [the verification guide](tools/verify/README.md#sodium-renderer-checks).
+
 ## In-game checks
 
 The [gameplay compatibility matrix](docs/gameplay-compatibility.ru.md) records coverage, known gaps, and reproducible commands.

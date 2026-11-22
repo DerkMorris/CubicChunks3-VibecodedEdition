@@ -6,4 +6,6 @@ public interface CubicLevelRenderer {
     void cc_onCubeReadyToRender(CubePos cubePos);
 
     void cc_onCubeUnloaded(CubePos cubePos);
+
+    default void cc_onCubeViewChanged() {}
 }

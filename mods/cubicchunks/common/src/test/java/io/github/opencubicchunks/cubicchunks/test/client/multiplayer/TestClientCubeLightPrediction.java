@@ -3,12 +3,14 @@ package io.github.opencubicchunks.cubicchunks.test.client.multiplayer;
 import static io.github.opencubicchunks.cubicchunks.testutils.Misc.mockLevelWithPalettes;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +52,54 @@ import org.junit.jupiter.api.Test;
 
 /** Real transformed cache and block setter: predict before returning from a break, with no server lighting callback. */
 class TestClientCubeLightPrediction extends BaseTest {
+    @Test
+    void finiteFloatingPlatformExcavationCrossesVerticalCubeBoundary() {
+        for (int surface : new int[] { -32000, 32000 }) {
+            Fixture fixture = new Fixture(Coords.blockToCube(surface));
+            CubePos upper = CubePos.from(new BlockPos(7, surface, 8));
+            CubePos lower = CubePos.from(new BlockPos(7, surface - 1, 8));
+            Function<BlockPos, BlockState> platform = at -> {
+                boolean inside = at.getX() >= 5 && at.getX() <= 12 && at.getZ() >= 6 && at.getZ() <= 13;
+                return (!inside || at.getY() > surface || at.getY() < surface - 4 ? Blocks.AIR
+                        : at.getY() == surface ? Blocks.GRASS_BLOCK : Blocks.DIRT).defaultBlockState();
+            };
+            ToIntFunction<BlockPos> initialSky = at -> {
+                if (!platform.apply(at).isAir()) {
+                    return 0;
+                }
+                if (at.getY() > surface || at.getX() < 5 || at.getX() > 12 || at.getZ() < 6 || at.getZ() > 13) {
+                    return 15;
+                }
+                // Below the finite platform, the nearest exposed vertical ray supplies attenuated side light.
+                return 15 - Math.min(Math.min(at.getX() - 4, 13 - at.getX()), Math.min(at.getZ() - 5, 14 - at.getZ()));
+            };
+            fixture.install(upper, platform, at -> 0, initialSky);
+            fixture.install(lower, platform, at -> 0, initialSky);
+            CubeLightView upperBefore = fixture.cache.cc_getVisibleCubeLightView(upper);
+            CubeLightView lowerBefore = fixture.cache.cc_getVisibleCubeLightView(lower);
+            List<BlockPos> excavated = new ArrayList<>();
+            for (int x = 7; x <= 9; x++) {
+                for (int z = 8; z <= 9; z++) {
+                    for (int depth = 0; depth < 3; depth++) {
+                        BlockPos cell = new BlockPos(x, surface - depth, z);
+                        CubePos cubePos = CubePos.from(cell);
+                        LevelCube cube = fixture.cache.cc_getCube(cubePos.getX(), cubePos.getY(), cubePos.getZ(), false);
+                        assertNotNull(cube.setBlockState(cell, Blocks.AIR.defaultBlockState()));
+                        excavated.add(cell);
+                        for (BlockPos previous : excavated) {
+                            assertEquals(15, fixture.sky(previous), () -> "After excavating " + cell + ", dark previously opened cell " + previous);
+                        }
+                        assertEquals(15, fixture.vanilla.getLightEngine().getLayerListener(LightLayer.SKY)
+                                .getDataLayerData(SectionPos.of(cell)).get(cell.getX() & 15, cell.getY() & 15, cell.getZ() & 15));
+                        assertFalse(fixture.cache.cc_isCubeLightReady(cubePos));
+                    }
+                }
+            }
+            assertEquals(0, upperBefore.sample(LightLayer.SKY, new BlockPos(7, surface, 8)).orElseThrow().exactValue().orElseThrow());
+            assertEquals(0, lowerBefore.sample(LightLayer.SKY, new BlockPos(7, surface - 2, 8)).orElseThrow().exactValue().orElseThrow());
+        }
+    }
+
     @Test
     void continuousExcavationGetsImmediateSkyInNewAirAtBothHeightSigns() {
         for (int y : new int[] { 1000000, -1000000 }) {

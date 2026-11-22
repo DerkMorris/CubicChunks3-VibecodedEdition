@@ -15,18 +15,27 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
+import org.spongepowered.asm.service.MixinService;
 
 public class ASMConfigPlugin implements IMixinConfigPlugin {
+    private boolean sodiumPresent;
     public ASMConfigPlugin() {}
 
-    @Override public void onLoad(String mixinPackage) {}
+    @Override public void onLoad(String mixinPackage) {
+        try {
+            MixinService.getService().getBytecodeProvider().getClassNode("net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer");
+            sodiumPresent = true;
+        } catch (ClassNotFoundException | java.io.IOException ignored) {
+            sodiumPresent = false;
+        }
+    }
 
     @Override public String getRefMapperConfig() {
         return null;
     }
 
     @Override public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        return true;
+        return !mixinClassName.contains(".client.compat.sodium.") || sodiumPresent;
     }
 
     @Override public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) {}

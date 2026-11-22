@@ -286,6 +286,7 @@ public abstract class MixinClientChunkCache extends MixinChunkSource implements 
         this.cc_cubeStorage.viewCenterZ = z;
         this.updateViewCenter(cubeToSection(x, 0), cubeToSection(z, 0));
         ((CubicClientLevel) this.level).cc_refreshEntityTicks();
+        cc_notifyRenderViewChanged();
     }
 
     @Shadow public abstract void updateViewRadius(int viewDistance);
@@ -314,6 +315,15 @@ public abstract class MixinClientChunkCache extends MixinChunkSource implements 
         }
         updateViewRadius(cc_calculateChunkViewDistance(viewDistance));
         ((CubicClientLevel) this.level).cc_refreshEntityTicks();
+        cc_notifyRenderViewChanged();
+    }
+
+    @Unique
+    private void cc_notifyRenderViewChanged() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft != null && minecraft.level == this.level && minecraft.levelRenderer != null) {
+            ((CubicLevelRenderer) minecraft.levelRenderer).cc_onCubeViewChanged();
+        }
     }
 
     @Shadow private static int calculateStorageRange(int viewDistance) {

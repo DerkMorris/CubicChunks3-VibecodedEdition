@@ -1,10 +1,10 @@
 package io.github.opencubicchunks.smoke;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 import io.github.opencubicchunks.cc_core.api.CubePos;
 import io.github.opencubicchunks.cubicchunks.client.multiplayer.ClientCubeCache;
-import io.github.opencubicchunks.cubicchunks.world.level.CubicLevelReader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.core.BlockPos;
@@ -15,7 +15,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
@@ -26,7 +26,9 @@ final class WorldLightDecreaseProbe {
     private final BlockPos first = new BlockPos(7, roof - 4, 8);
     private final BlockPos second = new BlockPos(10, roof - 4, 8);
     private CompletableFuture<Void> setup;
+    private CompletableFuture<Void> cleanup;
     private CompletableFuture<Boolean> confirmed;
+    private LightProbeScene scene;
     private int phase = -1;
     private int phaseTicks;
     private int pendingTicks;
@@ -36,18 +38,26 @@ final class WorldLightDecreaseProbe {
     private boolean screenshot;
 
     void tick(Minecraft client) {
+        if (cleanup != null) {
+            if (!cleanup.isDone()) return;
+            cleanup.join();
+            System.out.println("CC_LIGHT_DECREASE_COMPLETE phases=5 pendingTicks=" + totalPending + " maxActionMicros=" + maxActionNanos / 1000);
+            client.stop();
+            return;
+        }
         if (setup == null) { prepare(client); return; }
         if (!setup.isDone()) { return; }
         setup.join();
         var cache = (ClientCubeCache) client.level.getChunkSource();
         if (phase == -1) {
             if (!ready(cache) || !matches(client.level, -1) || !client.player.getMainHandItem().is(Items.STONE)
-                    || client.levelRenderer.visibleSections().stream().noneMatch(section -> Math.abs((long) section.getRenderOrigin().getY() - roof) < 48
-                    && section.getSectionMesh().hasRenderableLayers())) { return; }
+                    || !RenderGeometryChecks.hasVisibleGeometryNear(client, roof, 48)) { return; }
             act(client, 0);
         }
         if (!matches(client.level, phase)) {
-            throw new IllegalStateException("Predicted decrease changed before server light: phase=" + phase + " " + values(client.level));
+            throw new IllegalStateException("Predicted decrease changed before server light: phase=" + phase + " " + values(client.level)
+                    + " skylight=" + LightProbeDiagnostics.column(client, hole.below())
+                    + " firstTorch=" + LightProbeDiagnostics.column(client, first) + " secondTorch=" + LightProbeDiagnostics.column(client, second));
         }
         if (WorldLightDelay.active() && !ready(cache)) { pendingTicks++; }
         if (++phaseTicks == 10 && phase == 1) {
@@ -60,7 +70,7 @@ final class WorldLightDecreaseProbe {
         if (confirmed == null) {
             int captured = phase;
             var server = client.getSingleplayerServer();
-            confirmed = CompletableFuture.supplyAsync(() -> matches(server.overworld(), captured), server);
+            confirmed = CompletableFuture.supplyAsync(() -> matches(server.overworld(), scene::getBlockState, captured), server);
             return;
         }
         if (!confirmed.isDone()) { return; }
@@ -78,8 +88,7 @@ final class WorldLightDecreaseProbe {
         totalPending += pendingTicks;
         if (phase == 4) {
             if (!screenshot) { throw new IllegalStateException("Missing render evidence"); }
-            System.out.println("CC_LIGHT_DECREASE_COMPLETE phases=5 pendingTicks=" + totalPending + " maxActionMicros=" + maxActionNanos / 1000);
-            client.stop();
+            cleanup = CompletableFuture.runAsync(scene::close, client.getSingleplayerServer());
         } else {
             act(client, phase + 1);
         }
@@ -105,19 +114,25 @@ final class WorldLightDecreaseProbe {
             action = client.gameMode.startDestroyBlock(phase == 1 ? first : phase == 2 ? second : hole, Direction.UP);
         }
         if (!action || !matches(client.level, phase)) {
-            throw new IllegalStateException("Native action did not predict light immediately: phase=" + phase + " " + values(client.level));
+            throw new IllegalStateException("Native action did not predict light immediately: phase=" + phase + " " + values(client.level)
+                    + " skylight=" + LightProbeDiagnostics.column(client, hole.below())
+                    + " firstTorch=" + LightProbeDiagnostics.column(client, first) + " secondTorch=" + LightProbeDiagnostics.column(client, second));
         }
         maxActionNanos = Math.max(maxActionNanos, System.nanoTime() - start);
     }
 
     private boolean matches(Level level, int stage) {
+        return matches(level, level::getBlockState, stage);
+    }
+
+    private boolean matches(Level level, Function<BlockPos, BlockState> blocks, int stage) {
         boolean firstPresent = stage <= 0 || stage >= 3;
         boolean secondPresent = stage <= 1;
         int firstLight = firstPresent ? 14 : secondPresent ? 11 : 0;
         int secondLight = secondPresent ? 14 : firstPresent ? 11 : 0;
-        return level.getBlockState(hole).is(stage == -1 || stage == 4 ? Blocks.AIR : Blocks.STONE)
-                && level.getBlockState(first).is(firstPresent ? Blocks.TORCH : Blocks.AIR)
-                && level.getBlockState(second).is(secondPresent ? Blocks.TORCH : Blocks.AIR)
+        return blocks.apply(hole).is(stage == -1 || stage == 4 ? Blocks.AIR : Blocks.STONE)
+                && blocks.apply(first).is(firstPresent ? Blocks.TORCH : Blocks.AIR)
+                && blocks.apply(second).is(secondPresent ? Blocks.TORCH : Blocks.AIR)
                 && level.getBrightness(LightLayer.BLOCK, first) == firstLight && level.getBrightness(LightLayer.BLOCK, second) == secondLight
                 && level.getBrightness(LightLayer.SKY, hole.below()) == (stage == -1 || stage == 4 ? 15 : 0);
     }
@@ -136,9 +151,8 @@ final class WorldLightDecreaseProbe {
         var server = client.getSingleplayerServer();
         setup = CompletableFuture.runAsync(() -> {
             var level = server.overworld();
+            scene = LightProbeScene.retain(level, new BlockPos(5, roof - 5, 5), new BlockPos(12, roof, 12));
             for (BlockPos pos : BlockPos.betweenClosed(new BlockPos(5, roof - 5, 5), new BlockPos(12, roof, 12))) {
-                CubePos cube = CubePos.from(pos);
-                ((CubicLevelReader) level).cc_getCube(cube.getX(), cube.getY(), cube.getZ(), ChunkStatus.FULL, true);
                 boolean shell = pos.getX() == 5 || pos.getX() == 12 || pos.getZ() == 5 || pos.getZ() == 12 || pos.getY() == roof - 5 || pos.getY() == roof;
                 level.setBlockAndUpdate(pos, (shell && !pos.equals(hole) ? Blocks.STONE : Blocks.AIR).defaultBlockState());
             }

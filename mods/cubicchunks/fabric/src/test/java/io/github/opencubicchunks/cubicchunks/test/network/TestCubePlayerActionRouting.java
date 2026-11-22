@@ -29,7 +29,12 @@ import java.util.List;
 import io.github.opencubicchunks.cc_core.api.CubePos;
 import io.github.opencubicchunks.cc_core.world.level.CloPos;
 import io.github.opencubicchunks.cubicchunks.CanBeCubic;
+import io.github.opencubicchunks.cubicchunks.client.multiplayer.ClientCubeBlockChanges;
+import io.github.opencubicchunks.cubicchunks.client.multiplayer.ClientCubeCache;
+import io.github.opencubicchunks.cubicchunks.client.multiplayer.ClientCubePredictions;
+import io.github.opencubicchunks.cubicchunks.client.multiplayer.CubicClientLevel;
 import io.github.opencubicchunks.cubicchunks.network.CCClientboundCubeBlockChangesPacket;
+import io.github.opencubicchunks.cubicchunks.network.CCClientboundLevelCubePacketData;
 import io.github.opencubicchunks.cubicchunks.network.CCServerboundCubePlayerActionPacket;
 import io.github.opencubicchunks.cubicchunks.network.CCServerboundCubeUseItemOnPacket;
 import io.github.opencubicchunks.cubicchunks.server.level.CCServerPlayer;
@@ -42,12 +47,15 @@ import io.github.opencubicchunks.cubicchunks.world.level.cube.LevelCube;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientChunkCache;
 import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.Connection;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketUtils;
@@ -64,8 +72,10 @@ import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerPlayerGameMode;
+import net.minecraft.server.network.ServerCommandSuggestionsProvider;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.util.TickThrottler;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Abilities;
@@ -230,6 +240,58 @@ class TestCubePlayerActionRouting extends BaseTest {
     }
 
     @Test
+    void nativeSuccessfulBreakConfirmsPredictionBeforeAckWithoutWaitingForCubeBroadcast() throws ReflectiveOperationException {
+        for (int y : new int[] { -32000000, 32000000 }) {
+            ServerFixture fixture = new ServerFixture(new BlockPos(7, y, 8));
+            LevelCube serverCube = fixture.loadedCube();
+            PredictedClientFixture client = new PredictedClientFixture(serverCube, fixture.pos);
+            ServerPlayerGameMode real = spy(new ServerPlayerGameMode(fixture.player));
+            setField(ServerPlayer.class, fixture.player, "gameMode", real);
+            fixture.player.getAbilities().instabuild = true;
+            // Keep native validation, destroyAndAck and packet dispatch; the world mutation deliberately has no ticking-cube broadcast.
+            doAnswer(invocation -> serverCube.setBlockState(invocation.getArgument(0), Blocks.AIR.defaultBlockState()) != null).when(real)
+                    .destroyBlock(any());
+            client.predictBreak(7);
+            fixture.action(Action.START_DESTROY_BLOCK, 7);
+            verify(real).destroyBlock(fixture.pos);
+            assertTrue(serverCube.getBlockState(fixture.pos).isAir());
+            assertEquals(1, fixture.sent.size(), "A successful native break needs an explicit correction before its deferred ACK");
+            assertTrue(correction(fixture.sent.getFirst()).changes().getFirst().state().isAir());
+            fixture.flushAck();
+            assertEquals(7, assertInstanceOf(ClientboundBlockChangedAckPacket.class, fixture.sent.getLast()).sequence());
+            client.receive(fixture.sent);
+            assertTrue(client.cube.getBlockState(fixture.pos).isAir(), "ACK must confirm AIR instead of restoring the original solid block");
+            verify(fixture.cubes, never()).cc_getCube(anyInt(), anyInt(), anyInt(), any(), eq(true));
+        }
+    }
+
+    @Test
+    void nativeRejectedBreakRollsBackPredictionWithCurrentSignDataBeforeAck() throws ReflectiveOperationException {
+        ServerFixture fixture = new ServerFixture(new BlockPos(7, 32000000, 8));
+        LevelCube serverCube = fixture.loadedCube();
+        serverCube.setBlockState(fixture.pos, Blocks.OAK_SIGN.defaultBlockState());
+        PredictedClientFixture client = new PredictedClientFixture(serverCube, fixture.pos);
+        SignBlockEntity sign = (SignBlockEntity) serverCube.getBlockEntity(fixture.pos);
+        List<Component> text = List.of(Component.literal("authoritative rejection"), Component.empty(), Component.empty(), Component.empty());
+        sign.setText(new SignText(text, text, DyeColor.BLACK, false), SignTextSlot.FRONT);
+        ServerPlayerGameMode real = spy(new ServerPlayerGameMode(fixture.player));
+        setField(ServerPlayer.class, fixture.player, "gameMode", real);
+        when(fixture.player.blockActionRestricted(any(), any(), any())).thenReturn(true);
+        client.predictBreak(9);
+        fixture.action(Action.START_DESTROY_BLOCK, 9);
+        verify(real, never()).destroyBlock(any());
+        var update = correction(fixture.sent.getLast()).changes().getFirst();
+        assertEquals(Blocks.OAK_SIGN.defaultBlockState(), update.state());
+        assertNotNull(update.blockEntity());
+        fixture.flushAck();
+        client.receive(fixture.sent);
+        assertEquals(Blocks.OAK_SIGN.defaultBlockState(), client.cube.getBlockState(fixture.pos));
+        SignBlockEntity restored = (SignBlockEntity) client.cube.getBlockEntity(fixture.pos);
+        assertNotNull(restored);
+        assertEquals("authoritative rejection", restored.getText(SignTextSlot.FRONT).getMessages(false).getFirst().getString());
+    }
+
+    @Test
     void unavailableOrUntrackedTargetsAreAcknowledgedWithoutLoadingOrDispatchAndWrongWorldIsIgnored() throws ReflectiveOperationException {
         ServerFixture fixture = new ServerFixture(new BlockPos(1, 32000000, 2));
         when(((CCServerPlayer) fixture.player).cc_getCloTrackingView()).thenReturn(CloTrackingView.EMPTY);
@@ -388,6 +450,22 @@ class TestCubePlayerActionRouting extends BaseTest {
             when(((CCServerPlayer) player).cc_getCloTrackingView()).thenReturn(CloTrackingView.cc_of(CloPos.cube(CubePos.from(pos)), 5));
         }
 
+        private LevelCube loadedCube() {
+            CubePos cubePos = CubePos.from(pos);
+            return (LevelCube) cubes.cc_getCube(cubePos.getX(), cubePos.getY(), cubePos.getZ(), ChunkStatus.FULL, false);
+        }
+
+        private void flushAck() throws ReflectiveOperationException {
+            // Pause unrelated player simulation while executing the real listener tick that emits the accumulated ACK.
+            when(server.isPaused()).thenReturn(true);
+            for (String field : List.of("chatSpamThrottler", "commandSpamThrottler", "dropSpamThrottler")) {
+                setField(ServerGamePacketListenerImpl.class, listener, field, mock(TickThrottler.class));
+            }
+            setField(ServerGamePacketListenerImpl.class, listener, "commandSuggestionsProvider", mock(ServerCommandSuggestionsProvider.class));
+            doCallRealMethod().when(listener).tick();
+            listener.tick();
+        }
+
         private void action(Action action, int sequence) {
             var packet = new CCServerboundCubePlayerActionPacket(pos, action, Direction.UP, sequence);
             new CCServerboundCubePlayerActionPacket.Handler()
@@ -401,6 +479,56 @@ class TestCubePlayerActionRouting extends BaseTest {
         private void use(CCServerboundCubeUseItemOnPacket packet) {
             new CCServerboundCubeUseItemOnPacket.Handler()
                     .receive(TestCubePlayerActionPackets.roundTrip(CCServerboundCubeUseItemOnPacket.STREAM_CODEC, packet), context.player());
+        }
+    }
+
+    private static final class PredictedClientFixture {
+        private final BlockPos pos;
+        private final ClientLevel level = mockLevelWithPalettes(ClientLevel.class);
+        private final LocalPlayer player = mock();
+        private final ClientCubePredictions predictions = new ClientCubePredictions();
+        private final LevelCube cube;
+
+        private PredictedClientFixture(LevelCube source, BlockPos pos) {
+            this.pos = pos;
+            when(((CanBeCubic) level).cc_isCubic()).thenReturn(true);
+            when(level.isClientSide()).thenReturn(true);
+            when(player.level()).thenReturn(level);
+            when(player.position()).thenReturn(Vec3.atCenterOf(pos));
+            Misc.setupLevelHeight(level, -64, 384);
+            ClientChunkCache vanilla = new ClientChunkCache(level, 5);
+            when(level.getChunkSource()).thenReturn(vanilla);
+            when(((CubicClientLevel) level).cc_getCubePredictions()).thenReturn(predictions);
+            ClientCubeCache cache = (ClientCubeCache) vanilla;
+            CubePos cubePos = CubePos.from(pos);
+            cache.cc_updateViewCenter(cubePos.getX(), cubePos.getY(), cubePos.getZ());
+            var data = new CCClientboundLevelCubePacketData(source);
+            FriendlyByteBuf buffer = data.getReadBuffer();
+            try {
+                cube = cache.cc_replaceWithPacketData(cubePos.getX(), cubePos.getY(), cubePos.getZ(), buffer, data.getHeightmaps(), ignored -> {});
+            } finally {
+                buffer.release();
+            }
+        }
+
+        private void predictBreak(int sequence) {
+            var state = cube.getBlockState(pos);
+            predictions.retain(level, pos, state, CCClientboundCubeBlockChangesPacket.captureBlockEntity(cube, pos, state), player, sequence);
+            cube.setBlockState(pos, Blocks.AIR.defaultBlockState());
+        }
+
+        private void receive(List<Packet<?>> packets) {
+            for (Packet<?> packet : packets) {
+                if (packet instanceof ClientboundBlockChangedAckPacket ack) {
+                    predictions.acknowledge(level, player, ack.sequence(), -1);
+                } else {
+                    var update = correction(packet);
+                    for (var change : update.changes()) {
+                        ClientCubeBlockChanges.applyServerUpdate(level, cube, update.blockPos(change), change.state(), change.blockEntity());
+                    }
+                    assertTrue(cube.getBlockState(pos).isAir(), "Corrections update pending authoritative data until ACK");
+                }
+            }
         }
     }
 }
