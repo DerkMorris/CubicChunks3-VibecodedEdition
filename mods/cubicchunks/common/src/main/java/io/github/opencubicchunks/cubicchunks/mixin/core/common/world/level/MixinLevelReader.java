@@ -1,6 +1,7 @@
 package io.github.opencubicchunks.cubicchunks.mixin.core.common.world.level;
 
 import io.github.opencubicchunks.cubicchunks.CanBeCubic;
+import io.github.opencubicchunks.cubicchunks.server.level.CubicServerLevel;
 import io.github.opencubicchunks.cubicchunks.world.level.CubicBlockBounds;
 import io.github.opencubicchunks.cubicchunks.world.level.CubicLevelReader;
 import io.github.opencubicchunks.cubicchunks.world.level.entity.CubeMobBlockView;
@@ -8,6 +9,7 @@ import io.github.opencubicchunks.cubicchunks.world.level.entity.CubeSpawnContext
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.biome.Biome;
@@ -34,7 +36,13 @@ public interface MixinLevelReader extends CubicLevelReader {
             BlockPos pos = new BlockPos(QuartPos.toBlock(x), QuartPos.toBlock(y), QuartPos.toBlock(z));
             var context = CubeSpawnContext.current(this);
             var cube = context == null ? CubeMobBlockView.loadedCube(level, pos) : context.cube(pos);
-            cir.setReturnValue(cube == null ? level.getUncachedNoiseBiome(x, y, z) : cube.getNoiseBiome(x, y, z));
+            if (cube != null) {
+                cir.setReturnValue(cube.getNoiseBiome(x, y, z));
+            } else if (level instanceof ServerLevel server) {
+                cir.setReturnValue(((CubicServerLevel) server).cc_nativeBiomeTerrain().biomeResolver().getNoiseBiome(x, y, z));
+            } else {
+                cir.setReturnValue(level.getUncachedNoiseBiome(x, y, z));
+            }
         }
     }
 

@@ -77,8 +77,7 @@ public class CubeStatusTasks {
     public static CompletableFuture<CubeAccess> generateBiomes(
             WorldGenContext worldGenContext, CubeStep step, StaticCache3D<GenerationChunkHolder> cache, CubeAccess cube
     ) {
-        cube.fillBiomesFromNoise(
-                worldGenContext.generator().getBiomeSource().createUncachedResolver(worldGenContext.level().getChunkSource().randomState()));
+        cube.fillBiomesFromNoise(((CubicServerLevel) worldGenContext.level()).cc_nativeBiomeTerrain().biomeResolver());
         return passThrough(worldGenContext, step, cache, cube);
     }
 

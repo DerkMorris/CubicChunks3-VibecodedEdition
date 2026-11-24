@@ -10,10 +10,13 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import io.github.opencubicchunks.cubicchunks.world.level.CubicBlockBounds;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.QuartPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.util.Mth;
+import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainerFactory;
 import net.minecraft.world.level.chunk.ProtoChunk;
@@ -41,6 +44,9 @@ final class DeepCaveTerrain {
     private final PerlinNoise tunnels;
     private final PerlinNoise cross;
     private final PerlinNoise strata;
+    private final @Nullable BiomeResolver biomes;
+    private final int nativeMinY;
+    private final LoadingCache<SectionPos, LevelChunkSection> rawSections;
     private final LoadingCache<SectionPos, LevelChunkSection> sections;
 
     DeepCaveTerrain(long seed, DeepCaveSettings settings, PalettedContainerFactory palettes) {
@@ -48,8 +54,15 @@ final class DeepCaveTerrain {
     }
 
     DeepCaveTerrain(long seed, DeepCaveSettings settings, PalettedContainerFactory palettes, @Nullable DeepslateStrata deepslate) {
+        this(seed, settings, palettes, deepslate, null, Integer.MAX_VALUE);
+    }
+
+    DeepCaveTerrain(long seed, DeepCaveSettings settings, PalettedContainerFactory palettes, @Nullable DeepslateStrata deepslate,
+            @Nullable BiomeResolver biomes, int nativeMinY) {
         this.seed = seed;
         this.deepslate = deepslate;
+        this.biomes = biomes;
+        this.nativeMinY = nativeMinY;
         ores = new OreDistribution(seed, settings.oreRules());
         this.settings = settings;
         var scale = settings.caveCurves().get(CaveParameter.SCALE);
@@ -64,12 +77,42 @@ final class DeepCaveTerrain {
         tunnels = new PerlinNoise(random);
         cross = new PerlinNoise(random);
         strata = new PerlinNoise(random);
-        sections = CacheBuilder.newBuilder().maximumSize(CACHED_SECTIONS).build(CacheLoader.from(this::generate));
+        rawSections = CacheBuilder.newBuilder().maximumSize(CACHED_SECTIONS).build(CacheLoader.from(this::generate));
+        sections = biomes == null ? rawSections
+                : CacheBuilder.newBuilder().maximumSize(CACHED_SECTIONS).build(CacheLoader.from(this::decorate));
     }
 
     LevelChunkSection section(int sx, int sy, int sz) {
         // SectionPos.asLong truncates extreme Y. The object key retains all three coordinates.
         return sections.getUnchecked(SectionPos.of(sx, sy, sz));
+    }
+
+    private LevelChunkSection decorate(SectionPos pos) {
+        var raw = rawSections.getUnchecked(pos);
+        var section = raw.copy();
+        section.fillBiomesFromNoise(biomes, QuartPos.fromBlock(pos.minBlockX()), QuartPos.fromBlock(pos.minBlockY()),
+                QuartPos.fromBlock(pos.minBlockZ()));
+        if (settings.enabled()) {
+            // Decorations only read immutable raw neighbors, so requesting adjacent sections cannot recurse or change the result.
+            DeepCaveDecoration.decorate(seed, pos, section, biomes, (x, y, z) -> {
+                if (SectionPos.blockToSectionCoord(x) == pos.x() && SectionPos.blockToSectionCoord(y) == pos.y()
+                        && SectionPos.blockToSectionCoord(z) == pos.z()) {
+                    return raw.getBlockState(x & (SIDE - 1), y & (SIDE - 1), z & (SIDE - 1));
+                }
+                return rawBlock(x, y, z);
+            });
+        }
+        return section;
+    }
+
+    private BlockState rawBlock(int x, int y, int z) {
+        // Native terrain is decorated independently. An opaque non-decoratable sentinel prevents both false
+        // exposed surfaces and invented attachment points across the unknown native boundary.
+        if (y >= nativeMinY || !CubicBlockBounds.contains(y)) {
+            return Blocks.BEDROCK.defaultBlockState();
+        }
+        return rawSections.getUnchecked(SectionPos.of(SectionPos.blockToSectionCoord(x), SectionPos.blockToSectionCoord(y),
+                SectionPos.blockToSectionCoord(z))).getBlockState(x & (SIDE - 1), y & (SIDE - 1), z & (SIDE - 1));
     }
 
     private LevelChunkSection generate(SectionPos pos) {

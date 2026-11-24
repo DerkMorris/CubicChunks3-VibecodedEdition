@@ -102,6 +102,7 @@ if (project.hasProperty('worldSmoke')) {
             vmArg "-Dcubicchunks.smoke.deepCaves=${project.hasProperty('smokeDeepCaves')}"
             vmArg "-Dcubicchunks.smoke.structures=${project.hasProperty('smokeStructures')}"
             vmArg "-Dcubicchunks.smoke.biomes=${project.hasProperty('smokeBiomes')}"
+            vmArg "-Dcubicchunks.smoke.undergroundBiomes=${project.hasProperty('smokeUndergroundBiomes')}"
             vmArg "-Dcubicchunks.smoke.daylight=${project.hasProperty('smokeDaylight')}"
             vmArg "-Dcubicchunks.smoke.mobTicks=${project.hasProperty('smokeMobTicks') || project.hasProperty('smokeMobTravel')}"
             vmArg "-Dcubicchunks.smoke.gameplay=${project.hasProperty('smokeGameplay')}"

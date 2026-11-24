@@ -21,15 +21,18 @@ import io.github.opencubicchunks.cubicchunks.world.level.CubicWorldData;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.CubeAccess;
 import io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeLightBlockSnapshot;
 import io.github.opencubicchunks.cubicchunks.world.level.lighting.CubeSkyOcclusion;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.UpgradeData;
@@ -50,6 +53,7 @@ public final class NativeBiomeTerrain {
     private final ServerLevel level;
     private final NativeStructureLayout structures;
     private final @Nullable DeepCaveTerrain deep;
+    private final @Nullable DeepCaveBiomes deepBiomes;
     private final @Nullable DeepslateStrata strata;
     private final Executor generationExecutor;
     private final Map<ChunkPos, CompletableFuture<Map<ChunkPos, NativeBiomeColumn>>> tiles = new LinkedHashMap<>(16, .75f, true);
@@ -64,9 +68,12 @@ public final class NativeBiomeTerrain {
         structures = new NativeStructureLayout(level);
         var settings = level.getLevelData() instanceof CubicWorldData data ? data.cc_deepCaveSettings() : DeepCaveSettings.CLASSIC;
         strata = level.dimension() == Level.OVERWORLD ? new DeepslateStrata(level.getSeed(), settings.heights().deepslateStartY()) : null;
+        var source = level.getChunkSource();
+        deepBiomes = settings.enabled() && level.dimension() == Level.OVERWORLD
+                ? new DeepCaveBiomes(level.getSeed(), level.getMinY(), source.getGenerator().getBiomeSource(), source.randomState()) : null;
         boolean variedRock = strata != null && (strata.custom() || level.getMinY() > DeepslateStrata.VANILLA_START - DeepslateStrata.TRANSITION);
         deep = settings.enabled() || !settings.oreRules().isEmpty() || variedRock
-                ? new DeepCaveTerrain(level.getSeed(), settings, level.palettedContainerFactory(), strata) : null;
+                ? new DeepCaveTerrain(level.getSeed(), settings, level.palettedContainerFactory(), strata, deepBiomes, level.getMinY()) : null;
         this.generationExecutor = generationExecutor;
         biomes = CacheBuilder.newBuilder().maximumSize(TERRAIN_COLUMNS).build(CacheLoader.from(this::generateBiomes));
     }
@@ -98,6 +105,15 @@ public final class NativeBiomeTerrain {
 
     public NativeStructureLayout structures() {
         return structures;
+    }
+
+    /** Shared by the BIOMES stage, deep decoration and unloaded server biome queries. */
+    public BiomeResolver biomeResolver() {
+        if (deepBiomes != null) {
+            return deepBiomes;
+        }
+        var source = level.getChunkSource();
+        return source.getGenerator().getBiomeSource().createUncachedResolver(source.randomState());
     }
 
     public int baseFloor() {
@@ -205,7 +221,33 @@ public final class NativeBiomeTerrain {
             fillRock(cube.getSections()[i], belowFloorRock());
         } else {
             var generated = deepSection(cube.cc_getCubePos(), i);
-            cube.getSections()[i] = new LevelChunkSection(generated.getStates().copy(), cube.getSections()[i].getBiomes());
+            cube.getSections()[i] = deepBiomes == null
+                    ? new LevelChunkSection(generated.getStates().copy(), cube.getSections()[i].getBiomes()) : generated.copy();
+            copyDeepBlockEntities(cube, i);
+        }
+    }
+
+    private static void copyDeepBlockEntities(CubeAccess cube, int i) {
+        var section = cube.getSections()[i];
+        if (!section.maybeHas(state -> state.hasBlockEntity())) {
+            return;
+        }
+        var pos = cube.cc_getCubePos();
+        int x0 = SectionPos.sectionToBlockCoord(Coords.cubeToSection(pos.getX(), Coords.indexToX(i)));
+        int y0 = SectionPos.sectionToBlockCoord(Coords.cubeToSection(pos.getY(), Coords.indexToY(i)));
+        int z0 = SectionPos.sectionToBlockCoord(Coords.cubeToSection(pos.getZ(), Coords.indexToZ(i)));
+        for (int y = 0; y < SectionPos.SECTION_SIZE; y++) {
+            for (int z = 0; z < SectionPos.SECTION_SIZE; z++) {
+                for (int x = 0; x < SectionPos.SECTION_SIZE; x++) {
+                    var state = section.getBlockState(x, y, z);
+                    if (state.hasBlockEntity() && state.getBlock() instanceof EntityBlock block) {
+                        var entity = block.newBlockEntity(new BlockPos(x0 + x, y0 + y, z0 + z), state);
+                        if (entity != null) {
+                            cube.setBlockEntity(entity);
+                        }
+                    }
+                }
+            }
         }
     }
 

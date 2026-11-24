@@ -81,6 +81,12 @@ The optional renderer adapter targets **Sodium 0.9.2+mc26.3 for Fabric**. Instal
 
 The adapter supplies cube sections, biomes, light and block entities to Sodium, and forwards cube loading, unloading and renderer reloads. Other Sodium versions and Sodium on NeoForge are unverified. Reproducible snapshot and real-client checks are described in [the verification guide](tools/verify/README.md#sodium-renderer-checks).
 
+## Deep underground biomes
+
+With deep caves enabled in the Overworld, vanilla biome selection extends below the native lower boundary. Newly generated cubes can contain lush caves with moss and glow berries, dripstone caves with stalactites and stalagmites, and deep dark with sculk, sensors and shriekers.
+
+This deep layer uses a limited set of local CubicChunks cave decorations; it does not extend ancient cities below the native generation band. Generation within the native band remains unchanged. Existing saved cubes are not regenerated, so these additions appear in new cubes.
+
 ## In-game checks
 
 The [gameplay compatibility matrix](docs/gameplay-compatibility.ru.md) records coverage, known gaps, and reproducible commands.
