@@ -39,6 +39,7 @@ final class DeepCaveTerrain {
     private final DeepCaveSettings settings;
     private final @Nullable DeepslateStrata deepslate;
     private final double[] scaleBands;
+    private final double[] localScaleBands;
     private final PalettedContainerFactory palettes;
     private final PerlinNoise rooms;
     private final PerlinNoise tunnels;
@@ -46,6 +47,7 @@ final class DeepCaveTerrain {
     private final PerlinNoise strata;
     private final @Nullable BiomeResolver biomes;
     private final int nativeMinY;
+    private final @Nullable StructureCaveInfluence structureCaves;
     private final LoadingCache<SectionPos, LevelChunkSection> rawSections;
     private final LoadingCache<SectionPos, LevelChunkSection> sections;
 
@@ -59,10 +61,16 @@ final class DeepCaveTerrain {
 
     DeepCaveTerrain(long seed, DeepCaveSettings settings, PalettedContainerFactory palettes, @Nullable DeepslateStrata deepslate,
             @Nullable BiomeResolver biomes, int nativeMinY) {
+        this(seed, settings, palettes, deepslate, biomes, nativeMinY, null);
+    }
+
+    DeepCaveTerrain(long seed, DeepCaveSettings settings, PalettedContainerFactory palettes, @Nullable DeepslateStrata deepslate,
+            @Nullable BiomeResolver biomes, int nativeMinY, @Nullable StructureCaveInfluence structureCaves) {
         this.seed = seed;
         this.deepslate = deepslate;
         this.biomes = biomes;
         this.nativeMinY = nativeMinY;
+        this.structureCaves = structureCaves;
         ores = new OreDistribution(seed, settings.oreRules());
         this.settings = settings;
         var scale = settings.caveCurves().get(CaveParameter.SCALE);
@@ -71,6 +79,10 @@ final class DeepCaveTerrain {
                         .concat(Arrays.stream(SCALE_BANDS), DoubleStream.of(CaveParameter.SCALE.sample(scale, settings.scale(), CubicBlockBounds.MIN),
                                 CaveParameter.SCALE.sample(scale, settings.scale(), CubicBlockBounds.MAX)))
                         .sorted().distinct().toArray();
+        // Constant settings originally sample one exact frequency. Keep that anchor when introducing local scale changes,
+        // and keep the original spectrum outside structure influence so existing distant terrain remains identical.
+        localScaleBands = scale == null
+                ? DoubleStream.concat(Arrays.stream(SCALE_BANDS), DoubleStream.of(settings.scale())).sorted().distinct().toArray() : scaleBands;
         this.palettes = palettes;
         var random = new XoroshiroRandomSource(seed);
         rooms = new PerlinNoise(random);
@@ -171,14 +183,21 @@ final class DeepCaveTerrain {
 
     double[] densityGrid(int x0, int y0, int z0) {
         var grid = new double[GRID * GRID * GRID];
+        // Resolve layout once per section, before decoration and without reading any generated terrain.
+        var influence = structureCaves == null ? StructureCaveInfluence.Field.EMPTY : structureCaves.forArea(x0, y0, z0, SIDE);
         for (int y = 0; y < GRID; y++) {
             int blockY = y0 + STEP * y;
-            var scale = spectrum(CaveParameter.SCALE.sample(settings.caveCurves().get(CaveParameter.SCALE), settings.scale(), blockY));
-            double open = CaveParameter.OPENNESS.sample(settings.caveCurves().get(CaveParameter.OPENNESS), settings.openness(), blockY)
-                    / DeepCaveSettings.PERCENT;
+            double scaleValue = CaveParameter.SCALE.sample(settings.caveCurves().get(CaveParameter.SCALE), settings.scale(), blockY);
+            var scale = spectrum(scaleBands, scaleValue);
+            double open = CaveParameter.OPENNESS.sample(settings.caveCurves().get(CaveParameter.OPENNESS), settings.openness(), blockY);
             for (int z = 0; z < GRID; z++) {
                 for (int x = 0; x < GRID; x++) {
-                    grid[x + GRID * (z + GRID * y)] = density(x0 + STEP * x, blockY, z0 + STEP * z, scale, open);
+                    int blockX = x0 + STEP * x, blockZ = z0 + STEP * z;
+                    double weight = influence.weight(blockX, blockY, blockZ);
+                    var localScale = weight == 0 || scaleValue <= StructureCaveInfluence.TARGET_SCALE
+                            ? scale : spectrum(localScaleBands, StructureCaveInfluence.scale(scaleValue, weight));
+                    double localOpen = StructureCaveInfluence.openness(open, weight) / DeepCaveSettings.PERCENT;
+                    grid[x + GRID * (z + GRID * y)] = density(blockX, blockY, blockZ, localScale, localOpen);
                 }
             }
         }
@@ -192,13 +211,13 @@ final class DeepCaveTerrain {
         return Math.max(chamber, gallery);
     }
 
-    private ScaleBand spectrum(double value) {
-        int at = Arrays.binarySearch(scaleBands, value);
+    private static ScaleBand spectrum(double[] bands, double value) {
+        int at = Arrays.binarySearch(bands, value);
         if (at >= 0) {
             return new ScaleBand(value, value, 1, 0);
         }
         int next = -at - 1;
-        double low = scaleBands[next - 1], high = scaleBands[next];
+        double low = bands[next - 1], high = bands[next];
         double t = (value - low) / (high - low);
         double length = Math.hypot(1 - t, t);
         return new ScaleBand(low, high, (1 - t) / length, t / length);

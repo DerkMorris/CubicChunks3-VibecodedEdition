@@ -18,6 +18,7 @@ import io.github.opencubicchunks.cc_core.api.CubePos;
 import io.github.opencubicchunks.cc_core.world.level.CloPos;
 import io.github.opencubicchunks.cubicchunks.mixin.dasmsets.ChunkToCloSet;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.storage.CubeStorage;
+import io.github.opencubicchunks.cubicchunks.world.level.cube.storage.CubeStructureStorage;
 import io.github.opencubicchunks.cubicchunks.world.level.cube.storage.SerializableCubeData;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.datafix.DataFixTypes;
@@ -36,7 +37,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /** Keeps vanilla regions and cube files separate while sharing their flush and close lifecycle. */
 @Dasm(value = ChunkToCloSet.class, target = @Ref(SimpleRegionStorage.class))
 @Mixin(SimpleRegionStorage.class)
-public abstract class MixinChunkStorage {
+public abstract class MixinChunkStorage implements CubeStructureStorage {
     @Unique
     private @Nullable Path cc_cubeDirectory;
     @Unique

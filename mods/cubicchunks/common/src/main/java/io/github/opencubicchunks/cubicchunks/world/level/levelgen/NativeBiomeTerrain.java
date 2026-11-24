@@ -54,6 +54,7 @@ public final class NativeBiomeTerrain {
     private final NativeStructureLayout structures;
     private final @Nullable DeepCaveTerrain deep;
     private final @Nullable DeepCaveBiomes deepBiomes;
+    private final @Nullable DeepStructureTerrain deepContent;
     private final @Nullable DeepslateStrata strata;
     private final Executor generationExecutor;
     private final Map<ChunkPos, CompletableFuture<Map<ChunkPos, NativeBiomeColumn>>> tiles = new LinkedHashMap<>(16, .75f, true);
@@ -71,11 +72,18 @@ public final class NativeBiomeTerrain {
         var source = level.getChunkSource();
         deepBiomes = settings.enabled() && level.dimension() == Level.OVERWORLD
                 ? new DeepCaveBiomes(level.getSeed(), level.getMinY(), source.getGenerator().getBiomeSource(), source.randomState()) : null;
-        boolean variedRock = strata != null && (strata.custom() || level.getMinY() > DeepslateStrata.VANILLA_START - DeepslateStrata.TRANSITION);
-        deep = settings.enabled() || !settings.oreRules().isEmpty() || variedRock
-                ? new DeepCaveTerrain(level.getSeed(), settings, level.palettedContainerFactory(), strata, deepBiomes, level.getMinY()) : null;
+        var underground = deepBiomes == null ? null : new DeepStructureLayout(level, deepBiomes);
+        var protection = underground == null ? null : new StructureCaveInfluence(level, underground);
+        deep = needsDeepTerrain(settings)
+                ? new DeepCaveTerrain(level.getSeed(), settings, level.palettedContainerFactory(), strata, deepBiomes, level.getMinY(), protection) : null;
+        deepContent = underground == null ? null : new DeepStructureTerrain(level, deepBiomes, deep, underground);
         this.generationExecutor = generationExecutor;
         biomes = CacheBuilder.newBuilder().maximumSize(TERRAIN_COLUMNS).build(CacheLoader.from(this::generateBiomes));
+    }
+
+    private boolean needsDeepTerrain(DeepCaveSettings settings) {
+        boolean variedRock = strata != null && (strata.custom() || level.getMinY() > DeepslateStrata.VANILLA_START - DeepslateStrata.TRANSITION);
+        return settings.enabled() || !settings.oreRules().isEmpty() || variedRock;
     }
 
     private UndecoratedColumn generateBiomes(ChunkPos pos) {
@@ -105,6 +113,11 @@ public final class NativeBiomeTerrain {
 
     public NativeStructureLayout structures() {
         return structures;
+    }
+
+    /** Independent full-height owners; native surface structures continue to use supporting columns. */
+    public @Nullable DeepStructureLayout deepStructures() {
+        return deepContent == null ? null : deepContent.layout();
     }
 
     /** Shared by the BIOMES stage, deep decoration and unloaded server biome queries. */
@@ -223,6 +236,9 @@ public final class NativeBiomeTerrain {
             var generated = deepSection(cube.cc_getCubePos(), i);
             cube.getSections()[i] = deepBiomes == null
                     ? new LevelChunkSection(generated.getStates().copy(), cube.getSections()[i].getBiomes()) : generated.copy();
+            if (deepContent != null) {
+                deepContent.copyExtras(cube, i);
+            }
             copyDeepBlockEntities(cube, i);
         }
     }
@@ -236,12 +252,17 @@ public final class NativeBiomeTerrain {
         int x0 = SectionPos.sectionToBlockCoord(Coords.cubeToSection(pos.getX(), Coords.indexToX(i)));
         int y0 = SectionPos.sectionToBlockCoord(Coords.cubeToSection(pos.getY(), Coords.indexToY(i)));
         int z0 = SectionPos.sectionToBlockCoord(Coords.cubeToSection(pos.getZ(), Coords.indexToZ(i)));
+        var existing = cube.getBlockEntitiesPos();
         for (int y = 0; y < SectionPos.SECTION_SIZE; y++) {
             for (int z = 0; z < SectionPos.SECTION_SIZE; z++) {
                 for (int x = 0; x < SectionPos.SECTION_SIZE; x++) {
                     var state = section.getBlockState(x, y, z);
                     if (state.hasBlockEntity() && state.getBlock() instanceof EntityBlock block) {
-                        var entity = block.newBlockEntity(new BlockPos(x0 + x, y0 + y, z0 + z), state);
+                        var at = new BlockPos(x0 + x, y0 + y, z0 + z);
+                        if (existing.contains(at)) {
+                            continue;
+                        }
+                        var entity = block.newBlockEntity(at, state);
                         if (entity != null) {
                             cube.setBlockEntity(entity);
                         }
@@ -252,8 +273,10 @@ public final class NativeBiomeTerrain {
     }
 
     private LevelChunkSection deepSection(CubePos pos, int i) {
-        return deep.section(Coords.cubeToSection(pos.getX(), Coords.indexToX(i)), Coords.cubeToSection(pos.getY(), Coords.indexToY(i)),
-                Coords.cubeToSection(pos.getZ(), Coords.indexToZ(i)));
+        int sx = Coords.cubeToSection(pos.getX(), Coords.indexToX(i));
+        int sy = Coords.cubeToSection(pos.getY(), Coords.indexToY(i));
+        int sz = Coords.cubeToSection(pos.getZ(), Coords.indexToZ(i));
+        return deepContent == null ? deep.section(sx, sy, sz) : deepContent.section(sx, sy, sz);
     }
 
     private LevelChunkSection section(NativeBiomeColumn column, int sy) {

@@ -7,7 +7,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 
+import javax.annotation.Nullable;
+
 import io.github.opencubicchunks.cc_core.api.CubePos;
+import io.github.opencubicchunks.cubicchunks.CanBeCubic;
+import io.github.opencubicchunks.cubicchunks.server.level.CubicServerLevel;
+import io.github.opencubicchunks.cubicchunks.world.level.cube.CubeSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.Registries;
@@ -25,7 +30,7 @@ import net.minecraft.world.level.levelgen.structure.StructureSpawnOverride;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.levelgen.structure.structures.NetherFortressStructure;
 
-/** Loaded cube references use CubePos keys, never vanilla ChunkPos or packed block Y. Missing starts defer spawning. */
+/** Cube references use full CubePos keys. Distant deep owners resolve metadata without loading their terrain. */
 public final class CubeStructureSpawns {
     private static final int MAX_REFERENCES = 1024;
 
@@ -101,10 +106,7 @@ public final class CubeStructureSpawns {
         for (long key : references) {
             CubePos pos = CubePos.from(key);
             var owner = CubeMobBlockView.loadedCube(level, pos.asBlockPos());
-            if (owner == null) {
-                return false;
-            }
-            var start = owner.getStartForStructure(type);
+            var start = owner == null ? unloadedStart(level, pos, type) : owner.getStartForStructure(type);
             if (start == null) {
                 return false;
             }
@@ -113,6 +115,28 @@ public final class CubeStructureSpawns {
             }
         }
         return true;
+    }
+
+    private static @Nullable StructureStart unloadedStart(ServerLevel level, CubePos owner, Structure type) {
+        if (!((CanBeCubic) level).cc_isCubic() || owner.maxCubeY() >= level.getMinY()) {
+            return null;
+        }
+        // A present owner that is not FULL-ready must not be replaced by an inferred layout either.
+        if (((CubeSource) level.getChunkSource()).cc_getCubeNow(owner.getX(), owner.getY(), owner.getZ()) != null) {
+            return null;
+        }
+        var terrain = ((CubicServerLevel) level).cc_nativeBiomeTerrain();
+        var layout = terrain == null ? null : terrain.deepStructures();
+        if (layout == null) {
+            return null;
+        }
+        try {
+            var snapshot = layout.startForOwner(owner, type);
+            var start = snapshot == null ? null : snapshot.copy(level);
+            return start != null && start.isValid() ? start : null;
+        } catch (RuntimeException unavailable) {
+            return null;
+        }
     }
 
     public static boolean hasPiece(StructureStart start, BlockPos pos) {

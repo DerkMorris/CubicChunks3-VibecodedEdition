@@ -85,7 +85,11 @@ The adapter supplies cube sections, biomes, light and block entities to Sodium, 
 
 With deep caves enabled in the Overworld, vanilla biome selection extends below the native lower boundary. Newly generated cubes can contain lush caves with moss and glow berries, dripstone caves with stalactites and stalagmites, and deep dark with sculk, sensors and shriekers.
 
-This deep layer uses a limited set of local CubicChunks cave decorations; it does not extend ancient cities below the native generation band. Generation within the native band remains unchanged. Existing saved cubes are not regenerated, so these additions appear in new cubes.
+This deep layer combines local CubicChunks cave decorations with vanilla underground structures: mineshafts, strongholds, ancient cities, trial chambers and underground ruined portals. Vanilla monster rooms, amethyst geodes and fossils also have deep placement attempts. Structures use the world's enabled structure sets and eligible biomes; ancient cities require deep dark. Disable the world's structure-generation option to disable the large structures, as in vanilla.
+
+Below the native floor, `/locate structure` and eyes of ender search the surrounding underground volume; locate results include Y. Existing saved cubes are not regenerated, so these additions appear in new cubes. Surface-linked structures such as trail ruins, buried treasure and igloo basements keep their original placement.
+
+Deep strongholds build complete walls, floors and ceilings even in open air. Near strongholds and trial chambers, cave scale decreases to 32 and openness to 35%; settings already below these values remain unchanged. The adjustment reaches full strength within eight blocks of individual rooms and corridors and fades smoothly over the next 128 blocks. Small natural caves remain near the structures; no solid rock buffer is forced. Doorways remain open, and ores and cave decorations use the same adjusted terrain. This applies when generating new cubes.
 
 ## In-game checks
 

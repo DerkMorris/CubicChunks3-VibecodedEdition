@@ -25,6 +25,10 @@ public final class WorldEntryProbe implements ClientModInitializer {
     private final BiomeProbe biomes = Boolean.getBoolean("cubicchunks.smoke.biomes") ? new BiomeProbe() : null;
     private final UndergroundBiomesProbe undergroundBiomes = Boolean.getBoolean("cubicchunks.smoke.undergroundBiomes")
             ? new UndergroundBiomesProbe(reopen) : null;
+    private final UndergroundStructuresProbe undergroundStructures = Boolean.getBoolean("cubicchunks.smoke.undergroundStructures")
+            ? new UndergroundStructuresProbe(reopen) : null;
+    private final StrongholdCavesProbe strongholdCaves = Boolean.getBoolean("cubicchunks.smoke.strongholdCaves")
+            ? new StrongholdCavesProbe(reopen) : null;
     private final StreamingProbe streaming = Boolean.getBoolean("cubicchunks.smoke.streaming") ? new StreamingProbe() : null;
     private final DescentProbe descent = Boolean.getBoolean("cubicchunks.smoke.descent") ? new DescentProbe(reopen) : null;
     private final WorldLoadingLatencyProbe latency = System.getProperty("cubicchunks.smoke.latency", "").isBlank() ? null
@@ -92,6 +96,8 @@ public final class WorldEntryProbe implements ClientModInitializer {
             if ((descent != null || latency != null) && !reopen) DescentProbe.configureCreation();
             if (heights != null) heights.configureCreation(reopen);
             if (undergroundBiomes != null) UndergroundBiomesProbe.configureCreation(reopen);
+            if (undergroundStructures != null) UndergroundStructuresProbe.configureCreation(reopen);
+            if (strongholdCaves != null) StrongholdCavesProbe.configureCreation(reopen);
             client.options.simulationDistance().set(5);
             client.options.pauseOnLostFocus = false;
             String world = System.getProperty("cubicchunks.smoke.world", "cubic-entry");
@@ -106,7 +112,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
                                 && raidBoss == null && weather == null && multiplayer == null ? Difficulty.PEACEFUL : Difficulty.NORMAL, false,
                                 false),
                         true, WorldDataConfiguration.DEFAULT), new WorldOptions(descent == null && latency == null ? 246813579L : DescentProbe.SEED,
-                                structures != null || portals != null || descent != null || latency != null, false),
+                                structures != null || undergroundStructures != null || strongholdCaves != null || portals != null || descent != null || latency != null, false),
                         WorldPresets::createNormalWorldDimensions, client.gui.screen());
             }
         }
@@ -117,7 +123,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
                         + client.level.getBlockState(client.player.blockPosition().below()) + " render="
                         + client.levelRenderer.visibleSections().size());
             }
-            if (ticks == 100 && !reopen && descent == null && latency == null && undergroundBiomes == null) {
+            if (ticks == 100 && !reopen && descent == null && latency == null && undergroundBiomes == null && undergroundStructures == null && strongholdCaves == null) {
                 var server = client.getSingleplayerServer();
                 server.execute(
                         () -> server.overworld().setBlockAndUpdate(MARKER, net.minecraft.world.level.block.Blocks.GOLD_BLOCK.defaultBlockState()));
@@ -164,6 +170,12 @@ public final class WorldEntryProbe implements ClientModInitializer {
             if (undergroundBiomes != null && ticks >= 120 && client.gui.screen() == null) {
                 undergroundBiomes.tick(client);
             }
+            if (undergroundStructures != null && ticks >= 120 && client.gui.screen() == null) {
+                undergroundStructures.tick(client);
+            }
+            if (strongholdCaves != null && ticks >= 120 && client.gui.screen() == null) {
+                strongholdCaves.tick(client);
+            }
             if (daylight != null && ticks >= 160) {
                 daylight.tick(client);
             }
@@ -195,7 +207,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
                 raidBoss.tick(client);
             }
             if (heights == null && descent == null && latency == null && caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null && darkening == null
-                    && mobs == null && travel == null && daylight == null && biomes == null && undergroundBiomes == null && gameplay == null && environment == null
+                    && mobs == null && travel == null && daylight == null && biomes == null && undergroundBiomes == null && undergroundStructures == null && strongholdCaves == null && gameplay == null && environment == null
                     && portals == null && raidBoss == null && weather == null && sodium == null && multiplayer == null
                     && ticks >= Integer.getInteger("cubicchunks.smoke.ticks", 200) && client.gui.screen() == null
                     && (!asyncSaves || reopen || asyncProbe.isDone())
@@ -206,7 +218,7 @@ public final class WorldEntryProbe implements ClientModInitializer {
                         + CubicChunks.IS_IN_TEST);
                 client.stop();
             }
-            if (descent == null && latency == null && ticks == (caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null
+            if (descent == null && latency == null && undergroundStructures == null && strongholdCaves == null && ticks == (caves == null && structures == null && turns == null && streaming == null && lighting == null && digging == null
                     && darkening == null && mobs == null && travel == null && daylight == null && biomes == null && undergroundBiomes == null && gameplay == null
                     && environment == null && portals == null && raidBoss == null && weather == null && sodium == null && multiplayer == null ? 1200 : 6000)) {
                 throw new IllegalStateException("World entry timed out: " + client.gui.screen());

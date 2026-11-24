@@ -45,13 +45,17 @@ public class CubeStatusTasks {
         return CompletableFuture.completedFuture(cube);
     }
 
-    // Structure metadata belongs to the supporting columns. The terrain tile places their pieces before slicing the cube.
+    // Native-band metadata uses columns; underground structures have independent three-dimensional cube owners.
     @AddMethodToSets(containers = ChunkToCubeSet.ChunkStatusTasks_to_CubeStatusTasks_redirects.class, method = "generateStructureStarts(Lnet/minecraft/world/level/chunk/status/WorldGenContext;"
             + "Lnet/minecraft/world/level/chunk/status/ChunkStep;Lnet/minecraft/util/StaticCache2D;Lnet/minecraft/world/level/chunk/ChunkAccess;)"
             + "Ljava/util/concurrent/CompletableFuture;")
     public static CompletableFuture<CubeAccess> generateStructureStarts(
             WorldGenContext worldGenContext, CubeStep step, StaticCache3D<GenerationChunkHolder> cache, CubeAccess cube
     ) {
+        var structures = ((CubicServerLevel) worldGenContext.level()).cc_nativeBiomeTerrain().deepStructures();
+        if (structures != null) {
+            structures.installStarts(cube);
+        }
         return passThrough(worldGenContext, step, cache, cube);
     }
 
@@ -60,6 +64,10 @@ public class CubeStatusTasks {
     public static CompletableFuture<CubeAccess> loadStructureStarts(
             WorldGenContext worldGenContext, CubeStep step, StaticCache3D<GenerationChunkHolder> cache, CubeAccess cube
     ) {
+        var structures = ((CubicServerLevel) worldGenContext.level()).cc_nativeBiomeTerrain().deepStructures();
+        if (structures != null) {
+            structures.rememberLoaded(cube);
+        }
         return passThrough(worldGenContext, step, cache, cube);
     }
 
@@ -69,6 +77,10 @@ public class CubeStatusTasks {
     public static CompletableFuture<CubeAccess> generateStructureReferences(
             WorldGenContext worldGenContext, CubeStep step, StaticCache3D<GenerationChunkHolder> cache, CubeAccess cube
     ) {
+        var structures = ((CubicServerLevel) worldGenContext.level()).cc_nativeBiomeTerrain().deepStructures();
+        if (structures != null) {
+            structures.installReferences(cube);
+        }
         return passThrough(worldGenContext, step, cache, cube);
     }
 
